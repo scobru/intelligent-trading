@@ -1,34 +1,34 @@
 # Intelligent Trading
 
-> ⚠️ **Software sperimentale, non consulenza finanziaria.** Questi bot operano con denaro reale su Base e possono perdere in parte o del tutto il capitale che gli affidi. Parti in paper trading o dry-run; in live usa wallet dedicati e solo importi che puoi permetterti di perdere. Dettagli nella sezione **Avvertenza** in fondo.
+> ⚠️ **Experimental software, not financial advice.** These bots trade real money on Base and can lose some or all of the capital you give them. Start with paper trading or dry-run; when you go live, use dedicated wallets and only amounts you can afford to lose. See the **Disclaimer** section at the bottom.
 
-Una suite di **agenti di trading autonomi su [Base](https://base.org)**, ognuno
-specializzato in una strategia on-chain e guidato da un LLM (via
-[OpenRouter](https://openrouter.ai)), più un **coordinatore** che distribuisce
-il capitale fra loro e ne controlla il rischio complessivo.
+A suite of **autonomous trading agents on [Base](https://base.org)**. Each one
+specializes in a single on-chain strategy and is driven by an LLM (through
+[OpenRouter](https://openrouter.ai)). A **coordinator** splits capital across
+them and watches the overall risk.
 
-Ogni agente è un repository a sé, con il suo deploy, e si può usare anche da
-solo. Il modello propone, l'esecutore dispone: ogni limite di rischio è nel
-codice dell'esecutore e non si aggira dal prompt.
+Every agent lives in its own repository with its own deployment, and can be
+used on its own. The model proposes, the executor decides: every risk limit
+is enforced in the executor's code and cannot be bypassed from the prompt.
 
 ---
 
-## La suite
+## The suite
 
-| Agente | Strategia | Rischio | Protocolli su Base |
+| Agent | Strategy | Risk | Protocols on Base |
 |---|---|---|---|
-| [**perp**](https://github.com/scobru/intelligent-trading-agent-perp) | Perpetual direzionali con leva | Alto | SynFutures V3 |
-| [**degen**](https://github.com/scobru/intelligent-trading-agent-degen) | Spot speculativo su token nuovi e memecoin | Molto alto | Uniswap V3, screening di sicurezza GoPlus |
-| [**yield**](https://github.com/scobru/intelligent-trading-agent-yield) | Rendimento passivo su lending e vault, looping opzionale | Basso | Aave V3, Morpho, Moonwell, Compound, ERC-4626 |
-| [**neutral**](https://github.com/scobru/intelligent-trading-agent-neutral) | Funding carry delta-neutral (spot lungo + perp corto) | Basso-medio | Uniswap V3 + SynFutures V3 |
-| [**dca**](https://github.com/scobru/intelligent-trading-agent-dca) | DCA modulato dal Fear & Greed e ribilanciamento | Medio-basso | Uniswap V3 |
-| [**lp**](https://github.com/scobru/intelligent-trading-agent-lp) | Liquidità concentrata con ricentraggio del range | Medio | Uniswap V3 |
-| [**coordinator**](https://github.com/scobru/intelligent-trading-agent-coordinator) | Cabina di regia: regime di mercato, allocazione del capitale, circuit breaker, gas | — | legge e comanda gli agenti via API |
+| [**perp**](https://github.com/scobru/intelligent-trading-agent-perp) | Directional perpetuals with leverage | High | SynFutures V3 |
+| [**degen**](https://github.com/scobru/intelligent-trading-agent-degen) | Speculative spot on new tokens and memecoins | Very high | Uniswap V3, GoPlus security screening |
+| [**yield**](https://github.com/scobru/intelligent-trading-agent-yield) | Passive yield on lending markets and vaults, optional looping | Low | Aave V3, Morpho, Moonwell, Compound, ERC-4626 |
+| [**neutral**](https://github.com/scobru/intelligent-trading-agent-neutral) | Delta-neutral funding carry (long spot + short perp) | Low-medium | Uniswap V3 + SynFutures V3 |
+| [**dca**](https://github.com/scobru/intelligent-trading-agent-dca) | DCA scaled by the Fear & Greed index, plus rebalancing | Medium-low | Uniswap V3 |
+| [**lp**](https://github.com/scobru/intelligent-trading-agent-lp) | Concentrated liquidity with range re-centering | Medium | Uniswap V3 |
+| [**coordinator**](https://github.com/scobru/intelligent-trading-agent-coordinator) | Control room: market regime, capital allocation, circuit breaker, gas | — | reads and commands the agents through their APIs |
 
 ```
                     ┌──────────────────────────────┐
                     │         coordinator          │
-                    │  regime · allocazione · gas  │
+                    │  regime · allocation · gas   │
                     │  circuit breaker · dashboard │
                     └──────────────┬───────────────┘
             /api/status · pause · resume · release_funds
@@ -37,56 +37,62 @@ codice dell'esecutore e non si aggira dal prompt.
   perp    degen    yield        neutral    dca       lp
 ```
 
-## Cosa hanno in comune
+## What they share
 
-- **Ciclo decisionale uguale.** Scoperta dei dati di mercato → stato del
-  portafoglio → uscite di rischio automatiche (prima di sentire il modello)
-  → decisione dell'LLM in JSON → controlli dell'esecutore → esecuzione.
-- **Tre modalità.** `PAPER_TRADING` (portafoglio virtuale con prezzi e
-  rendimenti reali), `DRY_RUN` (legge la chain, stampa il piano, non firma
-  nulla) e live. La modalità si vede sempre in dashboard.
-- **Dashboard coerenti.** Stesso design system (`static/dashboard.css`,
-  `static/dashboard.js`) in tutti i repository: badge di modalità, pannello
-  paper, wallet e gas con avviso di ricarica, andamento del capitale,
-  posizioni, ultima decisione AI, storico operazioni, errori. Cambiano solo
-  colore d'accento e icona.
-- **Comandi protetti.** Gli endpoint che agiscono (`/api/run`, `pause`,
-  `resume`, `release_funds`, ...) passano tutti dallo stesso controllo
-  (`dashboard_auth.py`, identico in ogni repository): senza
-  `DASHBOARD_RUN_TOKEN` configurato sono disattivati.
-- **Telegram.** Report di ogni ciclo, avvisi di errore e comandi accettati
-  solo dalla chat configurata.
-- **Deploy.** Python, SQLite, Docker; `captain-definition` per
-  [CapRover](https://caprover.com). Lo stato persiste in `/app/data`.
+- **The same decision cycle.** Market data discovery → portfolio state →
+  automatic risk exits (before the model is consulted) → LLM decision as
+  JSON → executor checks → execution.
+- **Three modes.** `PAPER_TRADING` (virtual portfolio with real prices and
+  yields), `DRY_RUN` (reads the chain and prints the plan, signs nothing) and
+  live. The dashboard always shows which mode is active.
+- **Consistent dashboards.** The same design system (`static/dashboard.css`,
+  `static/dashboard.js`) in every repository: mode badge, paper panel, wallet
+  and gas with a top-up warning, equity curve, positions, last AI decision,
+  operation history, errors. Only the accent color and the icon change.
+- **Protected commands.** Every endpoint that acts (`/api/run`, `pause`,
+  `resume`, `release_funds`, ...) goes through the same check
+  (`dashboard_auth.py`, identical in every repository): they stay disabled
+  until `DASHBOARD_RUN_TOKEN` is set.
+- **Telegram.** A report after every cycle, error alerts, and commands
+  accepted only from the configured chat.
+- **Deployment.** Python, SQLite, Docker; `captain-definition` for
+  [CapRover](https://caprover.com). State persists in `/app/data`.
 
-## Come iniziare
+> The individual agents' READMEs are written in Italian for now.
 
-1. Scegli un agente e segui il suo README (`.env.example` elenca tutte le
-   variabili).
-2. Avvialo in **paper trading** e lascialo girare qualche giorno: la dashboard
-   mostra P&L, costi simulati e decisioni.
-3. Passa al live solo dopo, con un **wallet dedicato** per ogni agente e
-   importi piccoli.
-4. Con più agenti in funzione, il [coordinator](https://github.com/scobru/intelligent-trading-agent-coordinator)
-   li mette insieme in un'unica dashboard e sposta il capitale fra loro.
+## Getting started
 
-## ⚠️ Avvertenza
+1. Pick an agent and follow its README (`.env.example` lists every variable).
+2. Run it in **paper trading** and let it work for a few days: the dashboard
+   shows P&L, simulated costs and decisions.
+3. Only then go live, with a **dedicated wallet** for each agent and small
+   amounts.
+4. Once several agents are running, the
+   [coordinator](https://github.com/scobru/intelligent-trading-agent-coordinator)
+   brings them together in a single dashboard and moves capital between them.
 
-Questo software è sperimentale ed è fornito "così com'è", senza garanzie di alcun tipo
-(vedi la licenza MIT). Non è consulenza finanziaria né un invito a investire.
+## ⚠️ Disclaimer
 
-- **Puoi perdere denaro.** Bug, decisioni sbagliate del modello, slippage, exploit dei protocolli,
-  oracoli manipolati e liquidazioni possono far perdere in parte o del tutto il capitale.
-- **Le decisioni le prende un LLM.** Può sbagliare o comportarsi in modo imprevedibile: i limiti
-  dell'esecutore riducono il danno, non lo azzerano. I rendimenti passati, anche in paper, non
-  garantiscono quelli futuri.
-- **Parti in paper o dry-run.** In live usa un wallet dedicato al bot, con importi che puoi
-  permetterti di perdere, e non riutilizzare quella chiave privata altrove.
-- **Proteggi le chiavi.** La chiave privata va solo nelle variabili d'ambiente del deploy: non
-  committarla mai. Senza `DASHBOARD_RUN_TOKEN` i comandi della dashboard restano disattivati:
-  impostalo con un valore lungo e casuale prima di esporla su Internet.
-- **Leggi e tasse.** Sei responsabile del rispetto delle norme e degli obblighi fiscali del tuo paese.
+This software is experimental and provided "as is", without warranty of any
+kind (see the MIT license). It is not financial advice nor an invitation to
+invest.
 
-## Licenza
+- **You can lose money.** Bugs, wrong model decisions, slippage, protocol
+  exploits, manipulated oracles and liquidations can cause the loss of some or
+  all of your capital.
+- **Decisions are made by an LLM.** It can be wrong or behave unpredictably:
+  the executor's limits reduce the damage, they do not eliminate it. Past
+  results, paper ones included, do not guarantee future ones.
+- **Start with paper or dry-run.** When live, use a wallet dedicated to the
+  bot, with amounts you can afford to lose, and never reuse that private key
+  elsewhere.
+- **Protect your keys.** The private key belongs only in the deployment's
+  environment variables: never commit it. Without `DASHBOARD_RUN_TOKEN` the
+  dashboard commands stay disabled: set it to a long random value before
+  exposing the dashboard to the Internet.
+- **Laws and taxes.** You are responsible for complying with the rules and tax
+  obligations of your country.
+
+## License
 
 [MIT](LICENSE)
