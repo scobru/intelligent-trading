@@ -1,5 +1,11 @@
 # Intelligent Trading
 
+**AI trading agents built for [Base](https://base.org)**, the Ethereum L2 by Coinbase (chain ID 8453).
+
+[![Built for Base](https://img.shields.io/badge/built%20for-Base-0052FF)](https://base.org)
+[![Chain ID 8453](https://img.shields.io/badge/chain%20ID-8453-0052FF)](https://basescan.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 > ⚠️ **Experimental software, not financial advice.** These bots trade real money on Base and can lose some or all of the capital you give them. Start with paper trading or dry-run; when you go live, use dedicated wallets and only amounts you can afford to lose. See the **Disclaimer** section at the bottom.
 
 A suite of **autonomous trading agents on [Base](https://base.org)**. Each one
@@ -7,8 +13,11 @@ specializes in a single on-chain strategy and is driven by an LLM (through
 [OpenRouter](https://openrouter.ai)). A **coordinator** splits capital across
 them and watches the overall risk.
 
-Every agent lives in its own repository with its own deployment, and can be
-used on its own. The model proposes, the executor decides: every risk limit
+Everything is Base-native: contract addresses, protocol integrations, gas
+handling and on-chain checks are written for Base mainnet, and every
+transaction is signed for chain ID 8453. Every agent
+lives in its own repository with its own deployment, and can be used on its
+own. The model proposes, the executor decides: every risk limit
 is enforced in the executor's code and cannot be bypassed from the prompt.
 
 ---
