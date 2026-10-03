@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intelligent Trading — AI trading agents on Base</title>
+<meta name="description" content="A suite of autonomous, LLM-driven trading agents built for Base. Every risk limit is enforced in code, not in the prompt. Experimental, open source, MIT.">
+<meta property="og:title" content="Intelligent Trading — AI trading agents on Base">
+<meta property="og:description" content="Autonomous LLM trading agents on Base with a coordinator for allocation and risk. Open source, experimental.">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#0b0f1a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230052FF'/%3E%3Cpath d='M7 21l6-7 4 4 8-10' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0b0f1a;--surface:#121829;--card:#161d31;--line:rgba(255,255,255,.1);
+  --text:#e8ecf5;--muted:#9aa5bd;--base:#0052ff;--base-soft:#3c7bff;--warn:#f5b84a;
+  --radius:16px;--max:1120px;--gutter:clamp(1.1rem,4vw,2.5rem);
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:light){
+  :root{--bg:#f6f8fc;--surface:#fff;--card:#fff;--line:rgba(11,15,26,.12);--text:#0b0f1a;--muted:#4a5570;--base-soft:#0052ff;--warn:#8a5a00}
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:var(--base-soft)}
+a:focus-visible,button:focus-visible{outline:3px solid var(--base-soft);outline-offset:3px;border-radius:6px}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 var(--gutter)}
+header{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;height:64px}
+.brand{display:flex;align-items:center;gap:.6rem;font-weight:700;color:var(--text);text-decoration:none}
+.brand i{width:28px;height:28px;border-radius:8px;background:var(--base);display:grid;place-items:center}
+.brand svg{width:18px;height:18px}
+nav ul{display:flex;gap:1.4rem;list-style:none;margin:0;padding:0}
+nav a{color:var(--muted);text-decoration:none;font-size:.92rem}
+nav a:hover{color:var(--text)}
+.lang{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.lang button{background:none;border:0;color:var(--muted);font:600 .8rem var(--mono);padding:.4rem .75rem;cursor:pointer}
+.lang button[aria-pressed=true]{background:var(--base);color:#fff}
+@media (max-width:760px){nav ul{display:none}}
+
+.hero{padding:clamp(3.5rem,9vw,7rem) 0 clamp(2.5rem,6vw,4.5rem);background:radial-gradient(60% 50% at 80% 0%,rgba(0,82,255,.22),transparent 70%)}
+.pill{display:inline-flex;align-items:center;gap:.5rem;border:1px solid var(--line);border-radius:999px;padding:.3rem .8rem;font:500 .8rem var(--mono);color:var(--muted)}
+.pill b{width:8px;height:8px;border-radius:50%;background:var(--base)}
+h1{font-size:clamp(2.3rem,6vw,4.2rem);line-height:1.05;letter-spacing:-.03em;margin:1.2rem 0 1rem;max-width:16ch}
+h1 em{font-style:normal;color:var(--base-soft)}
+.lead{font-size:clamp(1.05rem,2vw,1.3rem);color:var(--muted);max-width:60ch;margin:0 0 2rem}
+.cta{display:flex;flex-wrap:wrap;gap:.8rem}
+.btn{display:inline-block;padding:.8rem 1.4rem;border-radius:999px;font-weight:600;text-decoration:none;border:1px solid var(--line);color:var(--text)}
+.btn.primary{background:var(--base);border-color:var(--base);color:#fff}
+.btn:hover{transform:translateY(-1px)}
+.facts{display:flex;flex-wrap:wrap;gap:1.5rem 2.5rem;margin-top:2.5rem;padding:0;list-style:none;font:500 .85rem var(--mono);color:var(--muted)}
+.facts strong{display:block;color:var(--text);font-size:1.1rem}
+
+.warn{margin:0 0 3rem;padding:1rem 1.2rem;border:1px solid color-mix(in srgb,var(--warn) 50%,transparent);border-radius:12px;background:color-mix(in srgb,var(--warn) 10%,transparent);font-size:.92rem}
+.warn strong{color:var(--warn)}
+
+section{padding:clamp(2.5rem,6vw,4.5rem) 0}
+h2{font-size:clamp(1.6rem,3.5vw,2.4rem);letter-spacing:-.02em;margin:0 0 .6rem}
+.sub{color:var(--muted);max-width:62ch;margin:0 0 2.2rem}
+.eyebrow{font:600 .75rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--base-soft);margin-bottom:.6rem}
+
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1rem;counter-reset:s;padding:0;list-style:none}
+.steps li{counter-increment:s;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:1.1rem}
+.steps li::before{content:counter(s);display:block;font:700 .8rem var(--mono);color:var(--base-soft);margin-bottom:.5rem}
+.steps strong{display:block;margin-bottom:.2rem}
+.steps span{color:var(--muted);font-size:.9rem}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:1rem}
+.agent{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:1.4rem;text-decoration:none;color:var(--text);transition:border-color .2s,transform .2s}
+.agent:hover{border-color:var(--base-soft);transform:translateY(-3px)}
+.agent h3{margin:0 0 .3rem;font:700 1.15rem var(--mono)}
+.agent p{margin:0 0 1rem;color:var(--muted);font-size:.95rem;flex:1}
+.meta{display:flex;flex-wrap:wrap;gap:.4rem;font:500 .74rem var(--mono)}
+.meta span{border:1px solid var(--line);border-radius:999px;padding:.15rem .6rem;color:var(--muted)}
+.risk-low{color:#3ecf8e!important}.risk-mid{color:var(--warn)!important}.risk-high{color:#ff6b6b!important}
+.agent.coord{grid-column:1/-1;border-style:dashed}
+
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
+.box{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:1.4rem}
+.box h3{margin:0 0 .5rem;font-size:1.05rem}
+.box p{margin:0;color:var(--muted);font-size:.95rem}
+code{font:.88em var(--mono);background:var(--surface);border:1px solid var(--line);padding:.1em .4em;border-radius:5px}
+
+footer{border-top:1px solid var(--line);padding:2rem 0 3rem;color:var(--muted);font-size:.88rem}
+footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:1rem}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top"><i aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M5 22l7-8 5 5 10-12" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg></i>Intelligent Trading</a>
+    <nav aria-label="Main"><ul>
+      <li><a href="#how" data-i18n="navHow">How it works</a></li>
+      <li><a href="#agents" data-i18n="navAgents">Agents</a></li>
+      <li><a href="#safety" data-i18n="navSafety">Safety</a></li>
+      <li><a href="#start" data-i18n="navStart">Get started</a></li>
+    </ul></nav>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="it" aria-pressed="false">IT</button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+<div class="hero"><div class="wrap">
+  <span class="pill"><b></b><span data-i18n="pill">Built for Base · chain ID 8453</span></span>
+  <h1 data-i18n="h1" data-html>AI trading agents, <em>native to Base.</em></h1>
+  <p class="lead" data-i18n="lead">A suite of autonomous agents, each focused on a single on-chain strategy and driven by an LLM. A coordinator splits capital across them and watches the overall risk.</p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/scobru/intelligent-trading" data-i18n="ctaGithub">View on GitHub</a>
+    <a class="btn" href="#start" data-i18n="ctaStart">Get started</a>
+  </div>
+  <ul class="facts">
+    <li><strong>6 + 1</strong><span data-i18n="fAgents">agents + coordinator</span></li>
+    <li><strong>3</strong><span data-i18n="fModes">modes: paper · dry-run · live</span></li>
+    <li><strong>MIT</strong><span data-i18n="fOpen">open source</span></li>
+  </ul>
+</div></div>
+
+<div class="wrap">
+  <p class="warn" role="note"><strong data-i18n="warnT">Experimental software, not financial advice.</strong> <span data-i18n="warnB">These bots can trade real money on Base and may lose some or all of the capital you give them. Start with paper trading or dry-run; when you go live, use dedicated wallets and only amounts you can afford to lose.</span></p>
+</div>
+
+<section id="how"><div class="wrap">
+  <div class="eyebrow">01 // <span data-i18n="navHow">How it works</span></div>
+  <h2 data-i18n="howH">The model proposes. The executor decides.</h2>
+  <p class="sub" data-i18n="howS">Every agent runs the same decision cycle. Risk limits live in the executor's code and cannot be bypassed from the prompt.</p>
+  <ol class="steps">
+    <li><strong data-i18n="s1t">Market data</strong><span data-i18n="s1d">Discovery of prices, yields and opportunities.</span></li>
+    <li><strong data-i18n="s2t">Portfolio state</strong><span data-i18n="s2d">Balances and open positions, read from the chain.</span></li>
+    <li><strong data-i18n="s3t">Automatic exits</strong><span data-i18n="s3d">Risk exits run before the model is even consulted.</span></li>
+    <li><strong data-i18n="s4t">LLM decision</strong><span data-i18n="s4d">The model answers with structured JSON.</span></li>
+    <li><strong data-i18n="s5t">Executor checks</strong><span data-i18n="s5d">Limits are enforced in code, then the order executes.</span></li>
+  </ol>
+</div></div>
+
+<section id="agents"><div class="wrap">
+  <div class="eyebrow">02 // <span data-i18n="navAgents">Agents</span></div>
+  <h2 data-i18n="agH">One agent, one strategy.</h2>
+  <p class="sub" data-i18n="agS">Each agent lives in its own repository with its own deployment, and can be used on its own.</p>
+  <div class="grid">
+    <a class="agent" href="https://github.com/scobru/intelligent-trading-agent-perp"><h3>perp</h3><p data-i18n="aPerp">Directional perpetuals with leverage.</p><div class="meta"><span class="risk-high" data-i18n="rHigh">Risk: high</span><span>SynFutures V3</span></div></a>
+    <a class="agent" href="https://github.com/scobru/intelligent-trading-agent-degen"><h3>degen</h3><p data-i18n="aDegen">Speculative spot on new tokens and memecoins, with security screening.</p><div class="meta"><span class="risk-high" data-i18n="rVHigh">Risk: very high</span><span>Uniswap V3</span><span>GoPlus</span></div></a>
+    <a class="agent" href="https://github.com/scobru/intelligent-trading-agent-yield"><h3>yield</h3><p data-i18n="aYield">Passive yield on lending markets and vaults, with optional looping.</p><div class="meta"><span class="risk-low" data-i18n="rLow">Risk: low</span><span>Aave V3</span><span>Morpho</span><span>Moonwell</span><span>Compound</span></div></a>
+    <a class="agent" href="https://github.com/scobru/intelligent-trading-agent-neutral"><h3>neutral</h3><p data-i18n="aNeutral">Delta-neutral funding carry: long spot plus short perp.</p><div class="meta"><span class="risk-low" data-i18n="rLowMid">Risk: low-medium</span><span>Uniswap V3</span><span>SynFutures V3</span></div></a>
+    <a class="agent" href="https://github.com/scobru/intelligent-trading-agent-dca"><h3>dca</h3><p data-i18n="aDca">DCA scaled by the Fear &amp; Greed index, plus rebalancing.</p><div class="meta"><span class="risk-mid" data-i18n="rMidLow">Risk: medium-low</span><span>Uniswap V3</span></div></a>
+    <a class="agent" href="https://github.com/scobru/intelligent-trading-agent-lp"><h3>lp</h3><p data-i18n="aLp">Concentrated liquidity with range re-centering.</p><div class="meta"><span class="risk-mid" data-i18n="rMid">Risk: medium</span><span>Uniswap V3</span></div></a>
+    <a class="agent coord" href="https://github.com/scobru/intelligent-trading-agent-coordinator"><h3>coordinator</h3><p data-i18n="aCoord">The control room: market regime, capital allocation, circuit breaker and gas. It reads and commands the agents through their APIs.</p><div class="meta"><span data-i18n="rCoord">Single dashboard</span><span>pause</span><span>resume</span><span>release_funds</span></div></a>
+  </div>
+</div></section>
+
+<section id="safety"><div class="wrap">
+  <div class="eyebrow">03 // <span data-i18n="navSafety">Safety</span></div>
+  <h2 data-i18n="saH">Built to fail small.</h2>
+  <p class="sub" data-i18n="saS">An LLM can be wrong. The executor's limits reduce the damage; they do not eliminate it.</p>
+  <div class="cols">
+    <div class="box"><h3 data-i18n="b1t">Three modes</h3><p data-i18n="b1d" data-html><code>PAPER_TRADING</code> uses a virtual portfolio with real prices. <code>DRY_RUN</code> reads the chain and prints the plan, signing nothing. Then live. The dashboard always shows the active mode.</p></div>
+    <div class="box"><h3 data-i18n="b2t">Protected commands</h3><p data-i18n="b2d" data-html>Every endpoint that acts stays disabled until <code>DASHBOARD_RUN_TOKEN</code> is set.</p></div>
+    <div class="box"><h3 data-i18n="b3t">Dedicated wallets</h3><p data-i18n="b3d">One wallet per agent, small amounts, and never reuse the private key elsewhere.</p></div>
+    <div class="box"><h3 data-i18n="b4t">Telegram reports</h3><p data-i18n="b4d">A report after every cycle, error alerts, and commands accepted only from the configured chat.</p></div>
+  </div>
+</div></section>
+
+<section id="start"><div class="wrap">
+  <div class="eyebrow">04 // <span data-i18n="navStart">Get started</span></div>
+  <h2 data-i18n="stH">Paper first. Live later.</h2>
+  <ol class="steps">
+    <li><strong data-i18n="g1t">Pick an agent</strong><span data-i18n="g1d">Follow its README; <code>.env.example</code> lists every variable.</span></li>
+    <li><strong data-i18n="g2t">Run in paper</strong><span data-i18n="g2d">Let it work for a few days and check P&amp;L, costs and decisions.</span></li>
+    <li><strong data-i18n="g3t">Go live, small</strong><span data-i18n="g3d">Use a dedicated wallet and an amount you can afford to lose.</span></li>
+    <li><strong data-i18n="g4t">Add the coordinator</strong><span data-i18n="g4d">One dashboard, capital moved between agents.</span></li>
+  </ol>
+  <p class="sub" style="margin-top:1.5rem" data-i18n="stN">Note: the individual agents' READMEs are written in Italian for now.</p>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  <span data-i18n="disc">Provided "as is", without warranty. Not financial advice. You are responsible for the laws and taxes of your country. MIT license.</span>
+  <span><a href="https://github.com/scobru/intelligent-trading">GitHub</a> · <a href="https://base.org">Base</a></span>
+</div></footer>
+
+<script>
+const T={
+en:{},
+it:{
+navHow:"Come funziona",navAgents:"Agenti",navSafety:"Sicurezza",navStart:"Inizia",
+pill:"Costruito per Base · chain ID 8453",
+h1:"Agenti di trading AI, <em>nativi su Base.</em>",
+lead:"Una suite di agenti autonomi, ognuno dedicato a una singola strategia on-chain e guidato da un LLM. Un coordinator divide il capitale tra loro e controlla il rischio complessivo.",
+ctaGithub:"Vedi su GitHub",ctaStart:"Inizia",
+fAgents:"agenti + coordinator",fModes:"modalità: paper · dry-run · live",fOpen:"open source",
+warnT:"Software sperimentale, non è consulenza finanziaria.",
+warnB:"Questi bot possono operare con denaro reale su Base e perdere in tutto o in parte il capitale che gli affidi. Parti dal paper trading o dal dry-run; quando passi al live usa wallet dedicati e solo cifre che puoi permetterti di perdere.",
+howH:"Il modello propone. L'executor decide.",
+howS:"Ogni agente segue lo stesso ciclo decisionale. I limiti di rischio stanno nel codice dell'executor e non si aggirano dal prompt.",
+s1t:"Dati di mercato",s1d:"Ricerca di prezzi, rendimenti e opportunità.",
+s2t:"Stato del portafoglio",s2d:"Saldi e posizioni aperte, letti dalla chain.",
+s3t:"Uscite automatiche",s3d:"Le uscite per rischio scattano prima ancora di consultare il modello.",
+s4t:"Decisione dell'LLM",s4d:"Il modello risponde con JSON strutturato.",
+s5t:"Controlli dell'executor",s5d:"I limiti sono applicati nel codice, poi l'ordine viene eseguito.",
+agH:"Un agente, una strategia.",agS:"Ogni agente vive nel proprio repository con il proprio deploy e si può usare da solo.",
+aPerp:"Perpetual direzionali con leva.",
+aDegen:"Spot speculativo su token nuovi e memecoin, con controlli di sicurezza.",
+aYield:"Rendimento passivo su lending e vault, con looping opzionale.",
+aNeutral:"Funding carry delta-neutral: long spot più short perp.",
+aDca:"DCA scalato sull'indice Fear & Greed, più ribilanciamento.",
+aLp:"Liquidità concentrata con ri-centratura del range.",
+aCoord:"La sala di controllo: regime di mercato, allocazione del capitale, circuit breaker e gas. Legge e comanda gli agenti tramite le loro API.",
+rHigh:"Rischio: alto",rVHigh:"Rischio: molto alto",rLow:"Rischio: basso",rLowMid:"Rischio: medio-basso",rMidLow:"Rischio: medio-basso",rMid:"Rischio: medio",rCoord:"Dashboard unica",
+saH:"Costruito per sbagliare in piccolo.",saS:"Un LLM può sbagliare. I limiti dell'executor riducono il danno, non lo eliminano.",
+b1t:"Tre modalità",b1d:"<code>PAPER_TRADING</code> usa un portafoglio virtuale con prezzi reali. <code>DRY_RUN</code> legge la chain e stampa il piano senza firmare nulla. Poi il live. La dashboard mostra sempre la modalità attiva.",
+b2t:"Comandi protetti",b2d:"Ogni endpoint che agisce resta disabilitato finché non imposti <code>DASHBOARD_RUN_TOKEN</code>.",
+b3t:"Wallet dedicati",b3d:"Un wallet per agente, piccole somme, e mai riusare altrove la chiave privata.",
+b4t:"Report su Telegram",b4d:"Un report a ogni ciclo, avvisi di errore e comandi accettati solo dalla chat configurata.",
+stH:"Prima in paper. Poi live.",
+g1t:"Scegli un agente",g1d:"Segui il suo README; <code>.env.example</code> elenca tutte le variabili.",
+g2t:"Avvia in paper",g2d:"Lascialo lavorare qualche giorno e controlla P&amp;L, costi e decisioni.",
+g3t:"Passa al live, in piccolo",g3d:"Usa un wallet dedicato e una cifra che puoi permetterti di perdere.",
+g4t:"Aggiungi il coordinator",g4d:"Una dashboard sola, con il capitale spostato tra gli agenti.",
+stN:"Nota: per ora i README dei singoli agenti sono scritti in italiano.",
+disc:"Fornito «così com'è», senza garanzie. Non è consulenza finanziaria. Sei responsabile di leggi e tasse del tuo Paese. Licenza MIT."
+}};
+const $$=s=>document.querySelectorAll(s);
+// snapshot English from the DOM so the markup stays the single source of truth for EN
+$$('[data-i18n]').forEach(e=>{T.en[e.dataset.i18n]=e.innerHTML});
+function setLang(l){
+  document.documentElement.lang=l;
+  $$('[data-i18n]').forEach(e=>{const v=T[l][e.dataset.i18n];if(v!==undefined)e.innerHTML=v});
+  $$('.lang button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.lang===l));
+  document.title=l==='it'?'Intelligent Trading — Agenti di trading AI su Base':'Intelligent Trading — AI trading agents on Base';
+  try{localStorage.setItem('lang',l)}catch(e){}
+}
+$$('.lang button').forEach(b=>b.onclick=()=>setLang(b.dataset.lang));
+let l=new URLSearchParams(location.search).get('lang');
+try{l=l||localStorage.getItem('lang')}catch(e){}
+l=l||(navigator.language||'en').slice(0,2);
+if(l==='it')setLang('it');
+</script>
+</body>
+</html>
