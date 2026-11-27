@@ -99,7 +99,12 @@ docker compose up -d --build
   does not stop the others, and `run.py` restarts it after 30s.
 - Ports: coordinator 3000 (exposed), perp 3001, yield 3002, neutral 3003,
   lp 3004, dca 3005, degen 3006 (internal, the coordinator reads them).
-- State lives in the `/data/<id>` volume.
+- State lives in the `/data/<id>` volume. On CapRover add a persistent
+  directory with path `/data` (App Configs → Persistent Directories), otherwise
+  every redeploy wipes positions, paper books and history.
+- Paper mode: each strategy simulates on its own book, but the coordinator
+  counts for it only the capital its ledger assigned to it, times the
+  strategy's paper return. Transfers between strategies move that ledger.
 - The coordinator shows and allocates capital only across the strategies in
   `STRATEGIES`. Its "Apri Dashboard" link appears when you set
   `AGENT_<ID>_PUBLIC_URL` (and expose that port in `docker-compose.yml`).

@@ -12,4 +12,5 @@ import db_utils
 def isolated_db(tmp_path, monkeypatch):
     """DB SQLite temporaneo e inizializzato per ogni test (niente dipendenza da coordinator.db)."""
     monkeypatch.setattr(config, "SQLITE_DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setattr(config, "PAPER_ACCOUNT_FILE", str(tmp_path / "paper_treasury.json"))
     db_utils.init_db()

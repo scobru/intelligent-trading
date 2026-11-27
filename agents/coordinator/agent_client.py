@@ -219,6 +219,30 @@ class AgentClient:
             res["balance_usd"] = float(raw.get("balance_usd", raw.get("balance", 0.0)) or 0.0)
             res["equity_usd"] = float(raw.get("total_value_usd", raw.get("total_value", res["balance_usd"])) or res["balance_usd"])
 
+        self._apply_paper_ledger(res, paper)
+
+    @staticmethod
+    def _apply_paper_ledger(res: Dict[str, Any], paper: Dict[str, Any]) -> None:
+        """In paper every agent trades its own virtual book (initial_usdc), so summing their
+        equities double-counts capital and the coordinator's transfers never reach them.
+        The coordinator's ledger (virtual_allocations) is the capital each agent holds;
+        the agent's paper return is applied to it.
+        shortcut: the agent still sizes trades on its own book, not on the allocation;
+        upgrade by letting agents read their allocation if paper sizing matters."""
+        if not config.PAPER_TRADING:
+            return
+        try:
+            with open(config.PAPER_ACCOUNT_FILE, encoding="utf-8") as fh:
+                allocs = json.load(fh).get("virtual_allocations", {})
+        except (OSError, ValueError):
+            return
+        start = float(paper.get("initial_usdc") or config.PAPER_START_USDC)
+        if start <= 0:
+            return
+        scale = float(allocs.get(res["id"], 0.0)) / start
+        res["equity_usd"] = round(res["equity_usd"] * scale, 2)
+        res["balance_usd"] = round(res["balance_usd"] * scale, 2)
+
     def _local_disk_fallback(self, res: Dict[str, Any], agent_id: str) -> None:
         """Legge lo stato dai file persistenti se la dashboard HTTP del bot e' offline."""
         repo_name = res.get("repo", "")
