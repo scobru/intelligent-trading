@@ -50,16 +50,21 @@ class Treasury:
             return
         self.paper_file.parent.mkdir(parents=True, exist_ok=True)
         if not self.paper_file.exists():
-            initial_state = {
-                "treasury_usdc": config.PAPER_START_USDC,
-                "virtual_allocations": {
+            allocs = {
+                k: v for k, v in {
                     "yield": 3500.0,
                     "dca": 2500.0,
                     "neutral": 1500.0,
                     "lp": 1500.0,
                     "perp": 700.0,
-                    "degen": 300.0
-                },
+                    "degen": 300.0,
+                }.items() if k in config.AGENTS  # only strategies that are running
+            }
+            # Allocations come out of the starting capital, they are not on top of it.
+            treasury = max(0.0, config.PAPER_START_USDC - sum(allocs.values()))
+            initial_state = {
+                "treasury_usdc": treasury,
+                "virtual_allocations": allocs,
                 "total_rebalances_count": 0
             }
             with open(self.paper_file, "w", encoding="utf-8") as f:
@@ -271,17 +276,18 @@ class Treasury:
         if config.PAPER_TRADING:
             pst = self.get_paper_state()
             allocs = pst.get("virtual_allocations", {})
+            # Move only what the sender has: crediting the full amount created money.
             if from_id == "master_treasury":
-                pst["treasury_usdc"] = max(0.0, float(pst.get("treasury_usdc", 0.0)) - amount)
-                if to_id in allocs:
-                    allocs[to_id] = allocs[to_id] + amount
+                amount = min(amount, float(pst.get("treasury_usdc", 0.0)))
+                pst["treasury_usdc"] = float(pst.get("treasury_usdc", 0.0)) - amount
             else:
-                if from_id in allocs:
-                    allocs[from_id] = max(0.0, allocs[from_id] - amount)
-                if to_id in allocs:
-                    allocs[to_id] = allocs[to_id] + amount
-                elif to_id == "master_treasury":
-                    pst["treasury_usdc"] = float(pst.get("treasury_usdc", 0.0)) + amount
+                amount = min(amount, float(allocs.get(from_id, 0.0)))
+                allocs[from_id] = float(allocs.get(from_id, 0.0)) - amount
+            if to_id == "master_treasury":
+                pst["treasury_usdc"] = float(pst.get("treasury_usdc", 0.0)) + amount
+            else:
+                allocs[to_id] = float(allocs.get(to_id, 0.0)) + amount
+            pst["virtual_allocations"] = allocs
             pst["total_rebalances_count"] = pst.get("total_rebalances_count", 0) + 1
             self.save_paper_state(pst)
             db_utils.log_operation(

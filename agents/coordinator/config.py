@@ -250,7 +250,8 @@ elif _raw_db and not os.path.isabs(_raw_db) and Path("/app").exists():
     SQLITE_DB_PATH = str(Path("/app") / _raw_db)
 else:
     SQLITE_DB_PATH = _raw_db
-PAPER_ACCOUNT_FILE = str(BASE_DIR / "paper_treasury.json")
+# next to the DB, so it lives on the persistent volume like the rest of the state
+PAPER_ACCOUNT_FILE = str(Path(SQLITE_DB_PATH).parent / "paper_treasury.json")
 
 # --- Single deploy: only the strategies listed in STRATEGIES exist for the coordinator ---
 _active = {s.strip().lower() for s in os.getenv("STRATEGIES", "").split(",") if s.strip()} & set(AGENTS)

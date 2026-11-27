@@ -61,10 +61,10 @@ class Coordinator:
         logger.info("==================================================================")
 
         # 1. Recupero telemetria dai 6 agenti subordinati
-        logger.info("1/8 Interrogazione dei 6 agenti...")
+        logger.info("1/8 Interrogazione dei %d agenti...", len(config.AGENTS))
         agents_status = self.agent_client.get_all_statuses()
         online_count = sum(1 for a in agents_status.values() if a.get("online"))
-        logger.info("   -> %d/6 agenti online e operativi.", online_count)
+        logger.info("   -> %d/%d agenti online e operativi.", online_count, len(config.AGENTS))
 
         # 2. Analisi Macro e Regime di Mercato
         logger.info("2/8 Rilevamento Regime di Mercato e Prezzi Asset...")
