@@ -22,6 +22,7 @@ COPY . .
 # one volume at /data, one subdir per agent (persistent_path() uses <agent>/data)
 RUN cd agents/perp/synfutures-service && npm run build \
     && cd /app/agents/neutral/synfutures-service && npm run build \
+    && cd /app \
     && find agents -name start.sh -exec dos2unix {} \; \
     && for a in coordinator perp yield neutral lp dca degen; do \
          mkdir -p /data/$a && rm -rf agents/$a/data && ln -s /data/$a agents/$a/data; \
