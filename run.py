@@ -58,6 +58,9 @@ def build_env(agent, base, active):
     for k, v in base.items():
         if k.startswith(prefix) and len(k) > len(prefix):
             env[k[len(prefix):]] = v
+    # AGENT_<ID>_WALLET is what the coordinator uses for this agent: same address.
+    if agent != "coordinator" and base.get(prefix + "WALLET") and not env.get("WALLET_ADDRESS"):
+        env["WALLET_ADDRESS"] = base[prefix + "WALLET"]
     return env
 
 

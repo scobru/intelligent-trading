@@ -52,3 +52,10 @@ def test_missing_settings():
     assert run.missing_settings("coordinator", {}) == []
     assert len(run.missing_settings("yield", {})) == 2
     assert run.missing_settings("dca", {"WALLET_ADDRESS": "0x1", "OPENROUTER_API_KEY": "k"}) == []
+
+
+def test_coordinator_wallet_becomes_agent_wallet_address():
+    base = {"AGENT_DEGEN_WALLET": "0xabc", "AGENT_YIELD_WALLET": "0xdef", "AGENT_YIELD_WALLET_ADDRESS": "0x123"}
+    assert run.build_env("degen", base, ["degen"])["WALLET_ADDRESS"] == "0xabc"
+    assert run.build_env("yield", base, ["yield"])["WALLET_ADDRESS"] == "0x123"  # explicit wins
+    assert "WALLET_ADDRESS" not in run.build_env("coordinator", base, ["coordinator"])
