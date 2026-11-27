@@ -107,7 +107,9 @@ docker compose up -d --build
   strategy's paper return. Transfers between strategies move that ledger.
 - The coordinator shows and allocates capital only across the strategies in
   `STRATEGIES`. Each card has an "Apri Dashboard" button that opens
-  `http://<host you opened the coordinator on>:<agent port>`. Publish those
+  `http://<VPS IP>:<agent port>`: the IP is the coordinator domain resolved via
+  DNS (a domain can't be reused, `.dev` forces https on every port), or
+  `PUBLIC_HOST` if set (needed behind a CDN proxy such as Cloudflare). Publish those
   ports (docker-compose `ports`, or CapRover App Configs → Port Mapping, e.g.
   3001→3001 … 3006→3006). Set `AGENT_<ID>_PUBLIC_URL` to use another address.
 - At startup `run.py` warns, once per strategy, about a missing wallet or
