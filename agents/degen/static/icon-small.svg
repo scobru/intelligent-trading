@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Degen Trading Agent">
+  <title>Degen Trading Agent</title>
+  <defs>
+    <linearGradient id="bgs" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f97316"/>
+      <stop offset="1" stop-color="#db2777"/>
+    </linearGradient>
+  </defs>
+  <!-- Variante semplificata: fiamma piena, pensata per 16 e 32 px -->
+  <rect width="64" height="64" rx="12" fill="url(#bgs)"/>
+  <path d="M32 4 C37 17 51 24 51 40 C51 51.5 42.5 60 32 60 C21.5 60 13 51.5 13 40
+           C13 31 18 25.5 23 21 C22.8 28 25.5 32 29 34 C27.5 24 28.8 14 32 4 Z" fill="#ffffff"/>
+  <path d="M32.5 34 C36.5 39.5 41 43 41 48.5 C41 53.5 37 57 32 57 C27 57 23 53.5 23 48.5
+           C23 43.5 27.5 40 32.5 34 Z" fill="#fcd34d"/>
+</svg>
