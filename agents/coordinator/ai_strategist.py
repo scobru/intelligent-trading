@@ -68,8 +68,9 @@ class AiStrategist:
         for aid, st in agents_status.items():
             eq = float(st.get("equity_usd", 0.0) or 0.0)
             hist = history.get(aid, {})
-            pnl_usd = float(hist.get("pnl_usd", 0.0))
-            pnl_pct = float(hist.get("pnl_pct", 0.0))
+            # pnl_pct is None (N/A) when there is no valid baseline yet: score it as flat
+            pnl_usd = float(hist.get("pnl_usd") or 0.0)
+            pnl_pct = float(hist.get("pnl_pct") or 0.0)
             pos_cnt = int(st.get("positions_count", 0))
 
             # Base score neutrale

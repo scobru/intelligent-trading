@@ -28,3 +28,13 @@ def test_pnl_ignores_zero_baseline_and_transfers(tmp_path, monkeypatch):
     res = db_utils.get_agents_historical_pnl()["dca"]
     assert res["pnl_usd"] == 5.0
     assert res["pnl_pct"] == 5.0  # 5 / (50 + 50)
+
+
+def test_quant_score_handles_missing_pnl_baseline(monkeypatch):
+    # pnl_pct None = no valid baseline yet (N/A): must not crash the AI strategist
+    import ai_strategist
+    monkeypatch.setattr(db_utils, "get_agents_historical_pnl",
+                        lambda: {"dca": {"pnl_usd": 0.0, "pnl_pct": None}})
+    res = ai_strategist.AiStrategist().evaluate_performances_quantitatively(
+        {"dca": {"online": True, "equity_usd": 100.0}}, "BALANCED")
+    assert "dca" in str(res)
