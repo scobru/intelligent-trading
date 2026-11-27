@@ -66,7 +66,7 @@ HTML = r"""<!DOCTYPE html>
 <meta name="theme-color" content="#8b5cf6">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/dashboard.css?v=4">
+<link rel="stylesheet" href="/static/dashboard.css?v=6">
 <style>
 :root {
   --primary: #8b5cf6;
@@ -78,8 +78,7 @@ HTML = r"""<!DOCTYPE html>
   border-radius: 6px;
 }
 .btn-sm:hover:not(:disabled) {
-  opacity: 0.9;
-  transform: translateY(-1px);
+  opacity: 0.85;
 }
 .pool-pair {
   display: flex;
@@ -104,15 +103,15 @@ HTML = r"""<!DOCTYPE html>
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px;
-  margin-top: 6px;
+  padding: 8px 10px;
+  margin-top: 4px;
 }
 .range-track {
   position: relative;
-  height: 28px;
+  height: 18px;
   background: rgba(255, 255, 255, 0.04);
-  border-radius: 8px;
-  margin: 18px 0 12px;
+  border-radius: 4px;
+  margin: 22px 0 6px;
   overflow: visible;
 }
 .range-zone {
@@ -130,14 +129,11 @@ HTML = r"""<!DOCTYPE html>
   width: 4px;
   background: #10b981;
   border-radius: 2px;
-  box-shadow: 0 0 12px #10b981;
   transform: translateX(-50%);
-  transition: left 0.3s ease;
   z-index: 2;
 }
 .price-cursor.out-of-range {
   background: #ef4444;
-  box-shadow: 0 0 12px #ef4444;
 }
 .cursor-tooltip {
   position: absolute;
