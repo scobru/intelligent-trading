@@ -1,0 +1,447 @@
+"""
+Esecutore e gestore delle operazioni DCA e di Ribilanciamento su Base.
+
+Verifica le barriere di sicurezza, calcola le allocazioni ottimali,
+pianifica ed esegue gli swap su Uniswap V3 sia in modalita' Paper, Dry-run che Live.
+"""
+
+import logging
+import time
+from typing import Any, Dict, List, Optional
+
+import requests
+
+import config
+import sentiment
+from base_client import BaseChainError, BaseClient
+from paper import PaperBook
+from portfolio import PortfolioTracker
+from uniswap import UniswapV3
+
+logger = logging.getLogger(__name__)
+
+
+class DcaManager:
+    def __init__(self, client: BaseClient):
+        self.client = client
+        self.uniswap = UniswapV3(client)
+        self.paper = PaperBook() if config.PAPER_TRADING else None
+        self.tracker = PortfolioTracker(client, self.uniswap)
+        self._prices: Optional[Dict[str, float]] = None
+
+    # ------------------------------------------------------------ prezzi
+    def prices(self) -> Dict[str, float]:
+        if self._prices is None:
+            self._prices = self.tracker.get_prices()
+        return self._prices
+
+    def invalidate_prices(self):
+        """Forza la rilettura dei prezzi alla prossima chiamata (processi long-running)."""
+        self._prices = None
+
+    # ------------------------------------------------------------ auto-refuel
+    def ensure_usdc_balance(self) -> Optional[Dict[str, Any]]:
+        if self.paper or not self.client:
+            return None
+        return self.uniswap.auto_refuel_usdc()
+
+    # ------------------------------------------------------------ saldi & stato
+    def get_status(self) -> Dict[str, Any]:
+        prices = self.prices()
+        if self.paper:
+            balances = self.paper.get_balances_with_eth()
+            mode = "paper"
+        else:
+            balances = self._read_chain_balances()
+            mode = "dry_run" if config.DRY_RUN else "live"
+
+        eval_data = self.tracker.evaluate(balances, prices)
+        return self._build_status(balances, prices, eval_data, mode)
+
+    def _read_chain_balances(self) -> Dict[str, float]:
+        tokens = {sym: meta["address"] for sym, meta in config.KNOWN_ASSETS.items()}
+        try:
+            # Una sola eth_call per tutti i saldi (Multicall3)
+            return self.client.balances_batch(tokens)
+        except requests.RequestException as exc:
+            # Rate limit / errore di rete anche dopo i retry: non restituire saldi a
+            # zero, finirebbero negli snapshot come un crollo del portafoglio
+            raise BaseChainError(f"Saldi non leggibili dall'RPC: {exc}") from exc
+        except Exception as exc:
+            logger.warning("Multicall saldi fallita (%s): lettura token per token", exc)
+
+        balances = {}
+        for sym, meta in config.KNOWN_ASSETS.items():
+            try:
+                balances[sym] = self.client.balance_of_float(meta["address"])
+            except Exception as exc:
+                logger.warning(f"Errore recupero saldo per {sym}: {exc}")
+                balances[sym] = 0.0
+        try:
+            balances["ETH"] = self.client.eth_balance()
+        except Exception as exc:
+            logger.warning(f"Errore recupero saldo ETH: {exc}")
+            balances["ETH"] = 0.0
+        return balances
+
+    def _build_status(self, balances: Dict[str, float], prices: Dict[str, float],
+                      eval_data: Dict[str, Any], mode: str) -> Dict[str, Any]:
+        fng = sentiment.get_fear_and_greed()
+
+        # DCA eligibility check
+        now = time.time()
+        time_since_dca = now - float(eval_data.get("last_dca_time", 0.0))
+        dca_due = config.DCA_ENABLED and (time_since_dca >= config.DCA_INTERVAL_HOURS * 3600.0)
+
+        # Rebalance eligibility check
+        time_since_reb = now - float(eval_data.get("last_rebalance_time", 0.0))
+        reb_due = config.REBALANCE_ENABLED and eval_data["needs_rebalance"] and (
+            time_since_reb >= config.MIN_HOLD_HOURS_BETWEEN_REBALANCE * 3600.0
+        )
+
+        # Recalibration eligibility check
+        last_recal = float(eval_data.get("last_weight_recalibrate_time", 0.0))
+        time_since_recal = now - last_recal
+        recalibrate_due = config.AI_TACTICAL_WEIGHTS_ENABLED and (
+            last_recal == 0 or time_since_recal >= config.AI_RECALIBRATE_INTERVAL_HOURS * 3600.0
+        )
+
+        status = {
+            "wallet": self.client.address if self.client else "",
+            "mode": mode,
+            "total_value_usd": eval_data["total_value_usd"],
+            "balances": balances,
+            "prices": prices,
+            "portfolio": eval_data,
+            "sentiment": fng,
+            "dca_due": dca_due,
+            "rebalance_due": reb_due,
+            "recalibrate_due": recalibrate_due,
+            "weights_rationale": eval_data.get("weights_rationale", ""),
+            "gas_eth": eval_data.get("gas_eth", {}),
+            "hours_since_last_dca": round(time_since_dca / 3600.0, 1) if eval_data.get("last_dca_time") else None,
+            "hours_since_last_rebalance": round(time_since_reb / 3600.0, 1) if eval_data.get("last_rebalance_time") else None,
+            "hours_since_last_recalibrate": round(time_since_recal / 3600.0, 1) if last_recal else None,
+            "last_decision": eval_data.get("last_decision"),
+            "model": "OpenRouter (google/gemini-2.5-flash)",
+        }
+
+        if self.paper:
+            status["paper"] = self.paper.summary(prices)
+
+        return status
+
+    def recalibrate_weights(self, force: bool = False) -> Dict[str, Any]:
+        """
+        Ricalibra i pesi target del basket con l'AI o la matrice quantitativa.
+        """
+        import dca_agent
+        if not config.AI_TACTICAL_WEIGHTS_ENABLED and not force:
+            return {"status": "disabled", "message": "AI Tactical Weights disabilitato da configurazione"}
+
+        status = self.get_status()
+        now = time.time()
+        last_time = float(status.get("portfolio", {}).get("last_weight_recalibrate_time", 0.0))
+        interval_sec = config.AI_RECALIBRATE_INTERVAL_HOURS * 3600.0
+
+        if not force and last_time > 0 and (now - last_time < interval_sec):
+            hours_left = round((interval_sec - (now - last_time)) / 3600.0, 1)
+            return {
+                "status": "noop",
+                "message": f"Ricalibrazione non dovuta (prossima tra {hours_left}h)",
+                "target_weights": self.tracker.get_target_weights(),
+                "weights_rationale": self.tracker.state.get("weights_rationale", ""),
+                "last_decision": self.tracker.state.get("last_decision"),
+            }
+
+        res = dca_agent.recalibrate_weights_ai(
+            portfolio_summary=status,
+            sentiment_data=status.get("sentiment", {}),
+            current_weights=self.tracker.get_target_weights()
+        )
+        new_weights = res.get("target_weights", {})
+        rationale = res.get("rationale", "")
+        updated = self.tracker.update_target_weights(new_weights, rationale)
+
+        action = {
+            "operation": "recalibrate_weights",
+            "reason": rationale,
+            "target_weights": updated,
+            "source": res.get("source", "ai"),
+            "created_at": now,
+        }
+        result = {
+            "status": "success",
+            "operation": "recalibrate_weights",
+            "target_weights": updated,
+        }
+        try:
+            import db_utils
+            db_utils.log_operation(action, result)
+        except Exception as exc:
+            logger.warning("Errore salvataggio operazione recalibrate a DB: %s", exc)
+
+        self.tracker.record_decision(action)
+
+        return {
+            "status": "success",
+            "operation": "recalibrate_weights",
+            "target_weights": updated,
+            "rationale": rationale,
+            "source": res.get("source", "ai"),
+            "last_decision": action,
+        }
+
+    # ------------------------------------------------------------ pianificazione DCA
+    def plan_dca(self, status: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Calcola la proposta di acquisto DCA modulata da Fear & Greed.
+        """
+        if not config.DCA_ENABLED:
+            return None
+
+        fng = status.get("sentiment") or {}
+        multiplier = float(fng.get("dca_multiplier", 1.0))
+        base_amt = config.DCA_BASE_AMOUNT_USD
+        total_dca_usd = round(base_amt * multiplier, 2)
+
+        usdc_avail = float(status["balances"].get("USDC", 0.0))
+        if usdc_avail < total_dca_usd:
+            # Riduci a quanto disponibile oltre 1 dollaro di sicurezza
+            total_dca_usd = max(0.0, round(usdc_avail - 1.0, 2))
+
+        if total_dca_usd < config.MIN_REBALANCE_USD:
+            return None
+
+        # Ripartisci tra gli asset non-USDC target in base ai pesi attivi o al drift
+        active_weights = status.get("portfolio", {}).get("target_weights") or self.tracker.get_target_weights()
+        target_assets = {k: v for k, v in active_weights.items() if k != "USDC"}
+        sum_targets = sum(target_assets.values())
+        if sum_targets <= 0:
+            return None
+
+        purchases = []
+        for sym, weight in target_assets.items():
+            alloc_pct = weight / sum_targets
+            amt_usd = round(total_dca_usd * alloc_pct, 2)
+            if amt_usd >= config.MIN_REBALANCE_USD:
+                purchases.append({"asset": sym, "amount_usd": amt_usd})
+
+        if not purchases:
+            return None
+
+        return {
+            "operation": "dca",
+            "total_usd": total_dca_usd,
+            "multiplier": multiplier,
+            "fear_greed": fng.get("value"),
+            "classification": fng.get("classification"),
+            "purchases": purchases,
+            "reason": (
+                f"DCA schedulato: ${total_dca_usd:.2f} USDC ({multiplier:.2f}x F&G {fng.get('value')}) "
+                f"ripartito tra {', '.join(p['asset'] for p in purchases)}"
+            ),
+        }
+
+    # ------------------------------------------------------------ pianificazione ribilanciamento
+    def plan_rebalance(self, status: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Identifica l'asset piu' sovrappesato e lo riequilibra verso il piu' sottopesato.
+        """
+        if not config.REBALANCE_ENABLED:
+            return None
+
+        portfolio = status.get("portfolio") or {}
+        if not portfolio.get("needs_rebalance"):
+            return None
+
+        assets = portfolio.get("assets", {})
+        # Trova asset con max drift positivo e max drift negativo
+        overweight = max(assets.values(), key=lambda a: a.get("drift_pct", 0.0))
+        underweight = min(assets.values(), key=lambda a: a.get("drift_pct", 0.0))
+
+        if overweight["drift_pct"] < config.REBALANCE_THRESHOLD_PCT or underweight["drift_pct"] > -config.REBALANCE_THRESHOLD_PCT:
+            return None
+
+        # Importo da riequilibrare (metà della discrepanza o cap massimo)
+        amount_usd = min(
+            abs(overweight["diff_usd"]),
+            abs(underweight["diff_usd"]),
+            config.MAX_REBALANCE_USD,
+        )
+
+        if amount_usd < config.MIN_REBALANCE_USD:
+            return None
+
+        return {
+            "operation": "rebalance",
+            "from_asset": overweight["symbol"],
+            "to_asset": underweight["symbol"],
+            "amount_usd": round(amount_usd, 2),
+            "from_drift_pct": overweight["drift_pct"],
+            "to_drift_pct": underweight["drift_pct"],
+            "reason": (
+                f"Ribilanciamento drift: vendo ${amount_usd:.2f} di {overweight['symbol']} "
+                f"({overweight['drift_pct']:+.1f}%) e compro {underweight['symbol']} ({underweight['drift_pct']:+.1f}%)"
+            ),
+        }
+
+    # ------------------------------------------------------------ esecuzione
+    def execute_action(self, action: Dict[str, Any], status: Dict[str, Any]) -> Dict[str, Any]:
+        op = str(action.get("operation", "hold")).lower()
+        if op == "hold":
+            return {"status": "hold", "operation": "hold", "reason": action.get("reason", "Nessuna azione richiesta")}
+
+        if op == "dca":
+            return self._execute_dca(action, status)
+        elif op == "rebalance":
+            return self._execute_rebalance(action, status)
+
+        return {"status": "rejected", "operation": op, "reason": f"Operazione '{op}' non supportata"}
+
+    def _execute_dca(self, action: Dict[str, Any], status: Dict[str, Any]) -> Dict[str, Any]:
+        purchases = action.get("purchases", [])
+        prices = status.get("prices") or self.prices()
+        results = []
+        total_spent = 0.0
+
+        for item in purchases:
+            target_sym = item["asset"]
+            amt_usd = float(item["amount_usd"])
+            if self.paper:
+                res = self.paper.execute_swap("USDC", target_sym, amt_usd, prices, reason=action.get("reason", ""))
+                results.append(res)
+                if res.get("status") == "success":
+                    total_spent += amt_usd
+            elif config.DRY_RUN:
+                plan = f"swap ${amt_usd:.2f} USDC -> {target_sym} su Uniswap V3"
+                results.append({"status": "dry_run", "plan": plan, "target": target_sym, "amount_usd": amt_usd})
+                total_spent += amt_usd
+            else:
+                # Live swap
+                usdc_bal = self.client.balance_of_float(config.USDC)
+                if usdc_bal < amt_usd:
+                    results.append({
+                        "status": "error",
+                        "reason": f"USDC insufficiente: saldo {usdc_bal:.4f} < richiesto {amt_usd:.2f} per {target_sym}",
+                    })
+                    continue
+                token_out_addr = config.KNOWN_ASSETS[target_sym]["address"]
+                amt_raw = int(amt_usd * 1e6)
+                route = self.uniswap.best_route(config.USDC, token_out_addr, amt_raw)
+                if not route:
+                    results.append({"status": "error", "reason": f"Nessuna rotta Uniswap USDC -> {target_sym}"})
+                    continue
+                tx = self.uniswap.swap(route, config.DEFAULT_SLIPPAGE_BPS)
+                results.append({"status": "success", "tx": tx, "target": target_sym, "amount_usd": amt_usd})
+                total_spent += amt_usd
+
+        self.tracker.record_dca(total_spent)
+        return {
+            "status": "success" if total_spent > 0 else "noop",
+            "operation": "dca",
+            "total_spent_usd": round(total_spent, 2),
+            "purchases": results,
+            "reason": action.get("reason", ""),
+        }
+
+    def _execute_rebalance(self, action: Dict[str, Any], status: Dict[str, Any]) -> Dict[str, Any]:
+        from_sym = action["from_asset"]
+        to_sym = action["to_asset"]
+        amt_usd = float(action["amount_usd"])
+        prices = status.get("prices") or self.prices()
+
+        p_from = prices.get(from_sym, 1.0 if from_sym == "USDC" else 0.0)
+        if p_from <= 0:
+            return {"status": "error", "reason": f"Prezzo di {from_sym} non disponibile"}
+
+        qty_from = amt_usd / p_from
+
+        if self.paper:
+            res = self.paper.execute_swap(from_sym, to_sym, qty_from, prices, reason=action.get("reason", ""))
+            self.tracker.record_rebalance()
+            return dict(res, operation="rebalance", reason=action.get("reason", ""))
+
+        if config.DRY_RUN:
+            plan = f"swap {qty_from:.6f} {from_sym} (${amt_usd:.2f}) -> {to_sym} su Uniswap V3"
+            self.tracker.record_rebalance()
+            return {"status": "dry_run", "operation": "rebalance", "plan": plan, "reason": action.get("reason", "")}
+
+        # Live swap
+        token_in_addr = config.KNOWN_ASSETS[from_sym]["address"]
+        token_out_addr = config.KNOWN_ASSETS[to_sym]["address"]
+
+        # Verifica saldo in uscita (per token in) per sicurezza
+        token_in_bal = self.client.balance_of_float(token_in_addr)
+        token_in_price = prices.get(from_sym, 1.0 if from_sym == "USDC" else 0.0)
+        if token_in_bal * token_in_price < amt_usd:
+            return {
+                "status": "error",
+                "reason": f"Saldo insufficiente per {from_sym}: disp {token_in_bal * token_in_price:.2f} < richiesto {amt_usd:.2f}",
+            }
+
+        decimals_in = config.KNOWN_ASSETS[from_sym]["decimals"]
+        amount_raw = int(qty_from * (10 ** decimals_in))
+
+        route = self.uniswap.best_route(token_in_addr, token_out_addr, amount_raw)
+        if not route:
+            return {"status": "error", "reason": f"Nessuna rotta Uniswap {from_sym} -> {to_sym}"}
+
+        tx = self.uniswap.swap(route, config.DEFAULT_SLIPPAGE_BPS)
+        self.tracker.record_rebalance()
+        return {
+            "status": "success",
+            "operation": "rebalance",
+            "from_asset": from_sym,
+            "to_asset": to_sym,
+            "amount_usd": amt_usd,
+            "transactions": [tx],
+            "reason": action.get("reason", ""),
+        }
+
+    def release_funds(self, target_usdc: float = 0.0) -> Dict[str, Any]:
+        """
+        Vende asset detenuti dal portafoglio DCA per liberare USDC nel wallet.
+        """
+        status = self.get_status()
+        assets = status.get("portfolio", {}).get("assets", {})
+        total_freed = 0.0
+        trades = []
+        skipped = []
+
+        for sym, data in assets.items():
+            if sym == "USDC":
+                continue
+            if target_usdc > 0 and total_freed >= target_usdc:
+                break
+            val = float(data.get("value_usd", 0.0))
+            min_usd = getattr(config, "MIN_TRADE_USD", 5.0)
+            if val < min_usd:
+                skipped.append(f"{sym}: ${val:.2f} sotto il minimo di ${min_usd:.2f}")
+                continue
+
+            try:
+                res = self._execute_rebalance({"from_asset": sym, "to_asset": "USDC", "amount_usd": val, "reason": "svincolo fondi"}, status)
+                if res.get("status") in ("success", "paper", "dry_run"):
+                    total_freed += val
+                    trades.append({"asset": sym, "freed_usd": val})
+                else:
+                    skipped.append(f"{sym}: {res.get('message') or res.get('status')}")
+            except Exception as exc:
+                logger.error("Errore vendita DCA %s -> USDC: %s", sym, exc)
+                skipped.append(f"{sym}: {exc}")
+
+        new_status = self.get_status()
+        usdc = float(new_status.get("balances", {}).get("USDC", 0.0))
+        message = f"Liberati ${total_freed:.2f} USDC (saldo attuale: ${usdc:.2f})"
+        if skipped:
+            message += " | Non venduti: " + "; ".join(skipped)
+        return {
+            # nessuna vendita riuscita = errore visibile, non un finto successo
+            "status": "success" if trades or not skipped else "error",
+            "message": message,
+            "released_usd": round(total_freed, 2),
+            "usdc_balance": round(usdc, 2),
+            "trades": trades,
+            "skipped": skipped,
+        }
