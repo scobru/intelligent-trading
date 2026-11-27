@@ -458,7 +458,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 async function main() {
     try {
         console.log('[START] Starting SynFutures service...');
-        console.log(`   RPC: ${rpcUrl}`);
+        console.log(`   RPC: ${rpcUrl.split("/").slice(0, 3).join("/")}`); // path may hold an API key
         console.log(`   Private key configured: ${privateKey ? 'Yes' : 'No'}`);
         
         // Initialize SDK

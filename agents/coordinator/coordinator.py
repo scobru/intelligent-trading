@@ -172,7 +172,11 @@ class Coordinator:
                             act.get("action"), act.get("amount_usd"), act.get("from_agent"), act.get("to_agent"), act.get("reason"))
 
             # Esecuzione se abilitato AUTO_REBALANCE e non in blocco di emergenza
-            if config.AUTO_REBALANCE and not risk_data["circuit_breaker_active"]:
+            if config.AUTO_REBALANCE and online_count < len(config.AGENTS):
+                # An agent that is down or still starting reads as $0 and would be "funded".
+                logger.warning("   -> AUTO_REBALANCE sospeso: %d/%d agenti online, dati incompleti.",
+                               online_count, len(config.AGENTS))
+            elif config.AUTO_REBALANCE and not risk_data["circuit_breaker_active"]:
                 logger.info("   -> AUTO_REBALANCE attivo. Esecuzione trasferimenti...")
                 for act in alloc_plan["actions"]:
                     ok = self.treasury.execute_rebalance_action(act, agents_status, agent_client=self.agent_client)

@@ -110,7 +110,11 @@ def main():
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
 
-    for agent in active:
+    # Coordinator last: right after boot agents report empty status and it would rebalance on zeros.
+    delay = float(base.get("COORDINATOR_START_DELAY", "180"))
+    deferred = [a for a in active if a == "coordinator"]
+    started_at = time.time()
+    for agent in [a for a in active if a != "coordinator"]:
         env = build_env(agent, base, active)
         for m in missing_settings(agent, env):
             print(f"[run] WARNING {agent}: {m} not set, its cycles will fail", flush=True)
@@ -118,8 +122,14 @@ def main():
         print(f"[run] started {agent} on port {PORTS[agent]}", flush=True)
 
     # start.sh loops forever; if the script itself dies, restart only that strategy.
+    if deferred:
+        print(f"[run] coordinator starts in {delay:.0f}s (COORDINATOR_START_DELAY)", flush=True)
     while not stopping:
         time.sleep(5)
+        if deferred and time.time() - started_at >= delay and not stopping:
+            procs["coordinator"] = start("coordinator", build_env("coordinator", base, active))
+            print(f"[run] started coordinator on port {PORTS['coordinator']}", flush=True)
+            deferred = []
         for agent, p in list(procs.items()):
             if p.poll() is not None and not stopping:
                 print(f"[run] {agent} exited ({p.returncode}), restarting in 30s", flush=True)
