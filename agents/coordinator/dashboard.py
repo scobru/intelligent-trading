@@ -533,7 +533,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span>Gas ETH: <strong>${gasEth.toFixed(4)}</strong>${gasUsdStr}</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; gap: 6px;">
-              ${a.url ? `<a href="${a.url}" target="_blank" rel="noopener" style="font-size: 12px; text-decoration: none;">Apri Dashboard ↗</a>` : '<span></span>'}
+              ${(a.url || a.port) ? `<a href="${a.url || `http://${location.hostname}:${a.port}`}" target="_blank" rel="noopener" style="border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 3px 8px; font-size: 11px; text-decoration: none;">Apri Dashboard ↗</a>` : '<span></span>'}
               <div style="display: flex; gap: 6px;">
                 <button onclick="releaseAgentFunds('${aid}')" title="Svincola liquidità USDC (vende token o ritira da Gate)" style="background: rgba(14, 165, 233, 0.15); border: 1px solid rgba(14, 165, 233, 0.4); border-radius: 6px; color: var(--primary); padding: 3px 8px; font-size: 11px; cursor: pointer; font-weight: 500;">💸 Libera USDC</button>
                 ${pauseBtn}

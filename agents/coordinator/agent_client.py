@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import requests
+from urllib.parse import urlparse
 
 import config
 
@@ -50,6 +51,8 @@ class AgentClient:
             "gas_eth": 0.0,
             "wallet": cfg.get("wallet", ""),
             "url": cfg.get("public_url", ""),
+            # The browser builds http://<host it is on>:<port> when no public URL is set.
+            "port": urlparse(cfg["url"]).port,
             "positions_count": 0,
             "positions": [],
             "status": "offline",

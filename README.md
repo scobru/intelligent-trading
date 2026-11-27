@@ -106,8 +106,10 @@ docker compose up -d --build
   counts for it only the capital its ledger assigned to it, times the
   strategy's paper return. Transfers between strategies move that ledger.
 - The coordinator shows and allocates capital only across the strategies in
-  `STRATEGIES`. Its "Apri Dashboard" link appears when you set
-  `AGENT_<ID>_PUBLIC_URL` (and expose that port in `docker-compose.yml`).
+  `STRATEGIES`. Each card has an "Apri Dashboard" button that opens
+  `http://<host you opened the coordinator on>:<agent port>`. Publish those
+  ports (docker-compose `ports`, or CapRover App Configs → Port Mapping, e.g.
+  3001→3001 … 3006→3006). Set `AGENT_<ID>_PUBLIC_URL` to use another address.
 - At startup `run.py` warns, once per strategy, about a missing wallet or
   `OPENROUTER_API_KEY`.
 - The coordinator dashboard starts at once; its first cycle waits
