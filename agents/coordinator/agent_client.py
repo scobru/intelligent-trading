@@ -15,7 +15,8 @@ import config
 
 logger = logging.getLogger(__name__)
 
-TIMEOUT_SECONDS = 4.0
+# Agents build /api/status from RPC and price APIs: a few seconds is normal; they are polled in parallel.
+TIMEOUT_SECONDS = 15.0
 
 # Il release vende i token on-chain in modo sincrono (fino a TX_TIMEOUT_SECONDS=180 per tx lato agente).
 RELEASE_TIMEOUT_SECONDS = 300.0
