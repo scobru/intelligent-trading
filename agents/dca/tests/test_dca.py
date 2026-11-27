@@ -1,0 +1,461 @@
+"""
+Unit tests per Intelligent Trading Agent - DCA & Portfolio Rebalancer.
+Testa:
+  - Parsing e normalizzazione pesi target
+  - Logica moltiplicatore Fear & Greed
+  - PortfolioTracker (calcolo pesi, drift, trigger di ribilanciamento)
+  - PaperBook (simulazione swap, saldi, equity curve)
+  - DcaManager (pianificazione ed esecuzione DCA & Rebalance in paper mode)
+  - db_utils (salvataggio ed estrazione snapshot ed operazioni)
+"""
+
+import os
+import sys
+import shutil
+import tempfile
+import time
+import unittest
+from unittest.mock import MagicMock, patch
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import config
+import db_utils
+import sentiment
+from dca_manager import DcaManager
+from paper import PaperBook
+from portfolio import PortfolioTracker
+
+
+class TestConfigAndWeights(unittest.TestCase):
+    def test_parse_target_weights(self):
+        # Test default normalization
+        res = config._parse_target_weights("ETH:0.50,BTC:0.30,USDC:0.20")
+        self.assertIn("WETH", res)
+        self.assertIn("CBBTC", res)
+        self.assertIn("USDC", res)
+        self.assertAlmostEqual(sum(res.values()), 1.0, places=3)
+        self.assertEqual(res["WETH"], 0.50)
+        self.assertEqual(res["CBBTC"], 0.30)
+        self.assertEqual(res["USDC"], 0.20)
+
+    def test_parse_target_weights_unnormalized(self):
+        res = config._parse_target_weights("WETH:50,USDC:50")
+        self.assertEqual(res["WETH"], 0.50)
+        self.assertEqual(res["USDC"], 0.50)
+
+    def test_parse_target_weights_invalid(self):
+        res = config._parse_target_weights("INVALID_FORMAT")
+        self.assertIn("WETH", res)
+        self.assertEqual(res["WETH"], 0.25)
+
+
+class TestSentiment(unittest.TestCase):
+    def test_calculate_dca_multiplier(self):
+        self.assertEqual(sentiment.calculate_dca_multiplier(10), config.MULTIPLIER_EXTREME_FEAR)
+        self.assertEqual(sentiment.calculate_dca_multiplier(25), config.MULTIPLIER_EXTREME_FEAR)
+        self.assertEqual(sentiment.calculate_dca_multiplier(35), config.MULTIPLIER_FEAR)
+        self.assertEqual(sentiment.calculate_dca_multiplier(45), config.MULTIPLIER_FEAR)
+        self.assertEqual(sentiment.calculate_dca_multiplier(50), config.MULTIPLIER_NEUTRAL)
+        self.assertEqual(sentiment.calculate_dca_multiplier(60), config.MULTIPLIER_GREED)
+        self.assertEqual(sentiment.calculate_dca_multiplier(75), config.MULTIPLIER_GREED)
+        self.assertEqual(sentiment.calculate_dca_multiplier(85), config.MULTIPLIER_EXTREME_GREED)
+
+    def test_get_fear_and_greed_structure(self):
+        fg = sentiment.get_fear_and_greed(force=True)
+        self.assertIn("value", fg)
+        self.assertIn("classification", fg)
+        self.assertIn("dca_multiplier", fg)
+        self.assertGreaterEqual(fg["value"], 0)
+        self.assertLessEqual(fg["value"], 100)
+
+
+class TestPortfolioTracker(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.state_file = os.path.join(self.temp_dir, "test_portfolio.json")
+        self.client_mock = MagicMock()
+        self.uniswap_mock = MagicMock()
+        self.tracker = PortfolioTracker(self.client_mock, self.uniswap_mock, state_path=self.state_file)
+        self.p_weights = patch.dict("config.TARGET_WEIGHTS", {"WETH": 0.50, "CBBTC": 0.30, "USDC": 0.20}, clear=True)
+        self.p_weights.start()
+
+    def tearDown(self):
+        self.p_weights.stop()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_evaluate_balanced(self):
+        balances = {"WETH": 2.0, "CBBTC": 0.05, "USDC": 2000.0}
+        prices = {"WETH": 2500.0, "CBBTC": 60000.0, "USDC": 1.0}
+
+        eval_res = self.tracker.evaluate(balances, prices)
+        self.assertEqual(eval_res["total_value_usd"], 10000.0)
+        self.assertFalse(eval_res["needs_rebalance"])
+        self.assertEqual(len(eval_res["overweight_symbols"]), 0)
+        self.assertEqual(len(eval_res["underweight_symbols"]), 0)
+
+    def test_evaluate_unbalanced(self):
+        balances = {"WETH": 2.0, "CBBTC": 0.05, "USDC": 2000.0}
+        prices = {"WETH": 5000.0, "CBBTC": 60000.0, "USDC": 1.0}
+
+        eval_res = self.tracker.evaluate(balances, prices)
+        self.assertTrue(eval_res["needs_rebalance"])
+        self.assertIn("WETH", eval_res["overweight_symbols"])
+        self.assertIn("CBBTC", eval_res["underweight_symbols"])
+        self.assertIn("USDC", eval_res["underweight_symbols"])
+
+
+class TestPaperBook(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.state_file = os.path.join(self.temp_dir, "test_paper.json")
+        self.paper = PaperBook(path=self.state_file, start_usdc=1000.0, start_eth=0.1)
+        self.prices = {
+            "USDC": 1.0, "WETH": 2000.0, "CBBTC": 60000.0, "ETH": 2000.0,
+            "LINK": 15.0, "UNI": 10.0, "AERO": 1.0,
+        }
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_initial_state(self):
+        self.assertEqual(self.paper.balances.get("USDC"), 1000.0)
+        self.assertEqual(self.paper.balances.get("ETH"), 0.1)
+        self.assertEqual(self.paper.balances.get("WETH"), 0.0)
+
+    def test_execute_swap(self):
+        swap_res = self.paper.execute_swap(
+            token_in="USDC",
+            token_out="WETH",
+            amount_in=100.0,
+            prices=self.prices,
+            slippage_bps=50,
+        )
+        self.assertEqual(swap_res["status"], "success")
+        self.assertAlmostEqual(self.paper.balances.get("USDC"), 900.0, places=2)
+        self.assertGreater(self.paper.balances.get("WETH"), 0.049)
+        self.assertEqual(len(self.paper.state["trades"]), 1)
+
+    def test_insufficient_balance(self):
+        self.paper.balances["USDC"] = 0.0
+        swap_res = self.paper.execute_swap(
+            token_in="USDC",
+            token_out="WETH",
+            amount_in=5000.0,
+            prices=self.prices,
+        )
+        self.assertEqual(swap_res["status"], "rejected")
+
+
+class TestDcaManager(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.state_file = os.path.join(self.temp_dir, "test_portfolio.json")
+        self.paper_file = os.path.join(self.temp_dir, "test_paper.json")
+
+        self.client_mock = MagicMock()
+        self.client_mock.address = "0x1111111111111111111111111111111111111111"
+        self.client_mock.balance_of_float.return_value = 0.0
+        self.client_mock.eth_balance.return_value = 0.0
+
+        self.p_port = patch("config.PORTFOLIO_PATH", self.state_file)
+        self.p_paper = patch("config.PAPER_STATE_PATH", self.paper_file)
+        self.p_pt = patch("config.PAPER_TRADING", True)
+        self.p_port.start()
+        self.p_paper.start()
+        self.p_pt.start()
+
+        self.manager = DcaManager(self.client_mock)
+        self.manager._prices = {
+            "USDC": 1.0, "WETH": 2500.0, "CBBTC": 60000.0, "ETH": 2500.0,
+            "LINK": 15.0, "UNI": 10.0, "AERO": 1.0,
+        }
+
+    def tearDown(self):
+        self.p_port.stop()
+        self.p_paper.stop()
+        self.p_pt.stop()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_plan_dca(self):
+        status = self.manager.get_status()
+        status["sentiment"] = {"value": 20, "dca_multiplier": 1.50, "classification": "Extreme Fear"}
+        plan = self.manager.plan_dca(status)
+
+        self.assertIsNotNone(plan)
+        self.assertAlmostEqual(plan["total_usd"], 50.0 * 1.50, places=2)  # 75 USD
+        self.assertGreater(len(plan["purchases"]), 0)
+
+    def test_execute_dca_in_paper(self):
+        status = self.manager.get_status()
+        status["sentiment"] = {"value": 25, "dca_multiplier": 1.50, "classification": "Extreme Fear"}
+        plan = self.manager.plan_dca(status)
+
+        res = self.manager.execute_action(plan, status)
+        self.assertEqual(res["status"], "success")
+        self.assertGreater(len(res["purchases"]), 0)
+
+        # Verifica saldi paper
+        self.assertGreater(self.manager.paper.balances.get("WETH", 0.0), 0.0)
+        self.assertLess(self.manager.paper.balances.get("USDC", 0.0), 1000.0)
+
+    def test_plan_and_execute_rebalance(self):
+        self.manager.paper.balances["WETH"] = 2.0
+        self.manager.paper.balances["USDC"] = 100.0
+        self.manager.paper.balances["CBBTC"] = 0.0
+
+        status = self.manager.get_status()
+        plan = self.manager.plan_rebalance(status)
+
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan["operation"], "rebalance")
+        self.assertEqual(plan["from_asset"], "WETH")
+
+        res = self.manager.execute_action(plan, status)
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["operation"], "rebalance")
+
+
+class TestDatabaseUtils(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_file = os.path.join(self.temp_dir, "test_dca.db")
+        self.p_db = patch("config.SQLITE_DB_PATH", self.db_file)
+        self.p_db.start()
+        db_utils.init_db()
+
+    def tearDown(self):
+        self.p_db.stop()
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_log_snapshot_and_get_recent(self):
+        status = {
+            "total_value_usd": 12500.0,
+            "balances": {"WETH": 2.5, "USDC": 3000.0, "CBBTC": 0.05},
+            "portfolio": {
+                "assets": {
+                    "WETH": {"current_weight": 0.50},
+                    "USDC": {"current_weight": 0.24},
+                    "CBBTC": {"current_weight": 0.26},
+                }
+            },
+            "sentiment": {"value": 30, "classification": "Fear"},
+        }
+        db_utils.log_snapshot(status)
+        recent = db_utils.get_recent_snapshots(limit=5)
+        self.assertEqual(len(recent), 1)
+        self.assertEqual(recent[0]["total_value_usd"], 12500.0)
+        self.assertEqual(recent[0]["fng_value"], 30)
+
+    def test_log_operation_and_get_recent(self):
+        action = {
+            "operation": "dca",
+            "total_usd": 75.0,
+            "reason": "DCA schedulato Fear 1.5x",
+        }
+        result = {
+            "status": "success",
+            "total_spent_usd": 75.0,
+        }
+        db_utils.log_operation(action, result)
+        ops = db_utils.get_recent_operations(limit=5)
+        self.assertEqual(len(ops), 1)
+        self.assertEqual(ops[0]["operation"], "dca")
+
+    def test_release_funds_paper(self):
+        client = MagicMock()
+        client.balance_of_float.return_value = 0.0
+        client.eth_balance.return_value = 0.0
+        manager = DcaManager(client=client)
+        manager._prices = {
+            "USDC": 1.0, "WETH": 2500.0, "CBBTC": 60000.0, "ETH": 2500.0,
+            "LINK": 15.0, "UNI": 10.0, "AERO": 1.0,
+        }
+        # In paper mode with initial balance
+        res = manager.release_funds(target_usdc=50.0)
+        self.assertIn(res.get("status"), ["success", "no_action"])
+        self.assertIn("released_usd", res)
+
+
+class TestTacticalWeights(unittest.TestCase):
+    def test_quantitative_fallback_weights(self):
+        import dca_agent
+        # Test Extreme Fear
+        res_fear = dca_agent.get_quantitative_fallback_weights(20)
+        w_fear = res_fear["target_weights"]
+        self.assertAlmostEqual(sum(w_fear.values()), 1.0, places=3)
+        self.assertGreater(w_fear["CBBTC"], w_fear["AERO"])
+
+        # Test Greed
+        res_greed = dca_agent.get_quantitative_fallback_weights(70)
+        w_greed = res_greed["target_weights"]
+        self.assertAlmostEqual(sum(w_greed.values()), 1.0, places=3)
+        self.assertGreater(w_greed["AERO"], w_fear["AERO"])
+
+    def test_portfolio_tracker_custom_weights(self):
+        temp_dir = tempfile.mkdtemp()
+        state_file = os.path.join(temp_dir, "test_portfolio.json")
+        try:
+            tracker = PortfolioTracker(MagicMock(), MagicMock(), state_path=state_file)
+            custom_weights = {"WETH": 0.30, "CBBTC": 0.30, "LINK": 0.20, "USDC": 0.20}
+            updated = tracker.update_target_weights(custom_weights, rationale="Test AI rationale")
+            self.assertEqual(tracker.get_target_weights(), updated)
+            self.assertEqual(tracker.state.get("weights_rationale"), "Test AI rationale")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_portfolio_tracker_record_decision(self):
+        temp_dir = tempfile.mkdtemp()
+        state_file = os.path.join(temp_dir, "test_portfolio.json")
+        try:
+            tracker = PortfolioTracker(MagicMock(), MagicMock(), state_path=state_file)
+            dec = {"operation": "hold", "reason": "Portafoglio bilanciato"}
+            tracker.record_decision(dec)
+            self.assertEqual(tracker.state.get("last_decision", {}).get("operation"), "hold")
+            eval_data = tracker.evaluate({"USDC": 100.0}, {"USDC": 1.0})
+            self.assertEqual(eval_data.get("last_decision", {}).get("reason"), "Portafoglio bilanciato")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_manager_recalibrate_weights(self):
+        client = MagicMock()
+        client.balance_of_float.return_value = 0.0
+        client.eth_balance.return_value = 0.0
+        manager = DcaManager(client=client)
+        manager._prices = {
+            "USDC": 1.0, "WETH": 2500.0, "CBBTC": 60000.0, "ETH": 2500.0,
+            "LINK": 15.0, "UNI": 10.0, "AERO": 1.0,
+        }
+        res = manager.recalibrate_weights(force=True)
+        self.assertEqual(res["status"], "success")
+        self.assertIn("target_weights", res)
+        self.assertAlmostEqual(sum(res["target_weights"].values()), 1.0, places=3)
+
+
+
+class TestBaseClientResilience(unittest.TestCase):
+    def test_balance_of_resilience(self):
+        from base_client import BaseClient
+        with patch.object(BaseClient, "__init__", return_value=None):
+            client = BaseClient()
+            client.address = "0x2F1698080aCF28C5B45Ff5dA6d935b23389d7bF4"
+            client._decimals_cache = {}
+            client._symbol_cache = {}
+            mock_erc = MagicMock()
+            mock_erc.functions.balanceOf.return_value.call.side_effect = Exception("BadFunctionCallOutput: 0 bytes")
+            mock_erc.functions.decimals.return_value.call.side_effect = Exception("RPC timeout")
+            client.erc20 = MagicMock(return_value=mock_erc)
+
+            bal = client.balance_of("0x940181a94A35A4569E4529A3CDfB74e38FD98631")
+            self.assertEqual(bal, 0)
+            bal_fl = client.balance_of_float("0x940181a94A35A4569E4529A3CDfB74e38FD98631")
+            self.assertEqual(bal_fl, 0.0)
+            dec = client.decimals("0x940181a94A35A4569E4529A3CDfB74e38FD98631")
+            self.assertEqual(dec, 18)
+
+    def test_fallback_http_provider_rotation_on_429(self):
+        from base_client import FallbackHTTPProvider
+        import requests
+        import time
+
+        endpoints = ["https://primary.rpc.io", "https://fallback.rpc.io"]
+        provider = FallbackHTTPProvider(endpoints)
+        self.assertEqual(provider.endpoint_uri, "https://primary.rpc.io")
+
+        err_response = MagicMock()
+        err_response.status_code = 429
+        http_429 = requests.exceptions.HTTPError("429 Client Error", response=err_response)
+
+        call_count = 0
+        def fake_super_make_request(method, request_data):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise http_429
+            return b'{"jsonrpc":"2.0","result":"0x1","id":1}'
+
+        with patch("web3.HTTPProvider._make_request", side_effect=fake_super_make_request):
+            res = provider._make_request("eth_chainId", b"{}")
+            self.assertEqual(res, b'{"jsonrpc":"2.0","result":"0x1","id":1}')
+            self.assertEqual(provider.endpoint_uri, "https://fallback.rpc.io")
+            self.assertGreater(provider._cooldowns.get("https://primary.rpc.io", 0), time.time())
+
+    def test_db_snapshot_and_fetch_latest_status(self):
+        import tempfile
+        import shutil
+
+        temp_dir = tempfile.mkdtemp()
+        db_path = os.path.join(temp_dir, "test_dca.db")
+        try:
+            with patch("config.SQLITE_DB_PATH", db_path):
+                db_utils.init_db()
+                self.assertIsNone(db_utils.fetch_latest_status())
+
+                sample_status = {
+                    "mode": "live",
+                    "total_value_usd": 1500.0,
+                    "balances": {"USDC": 300.0, "WETH": 0.48},
+                    "sentiment": {"value": 25, "classification": "Extreme Fear"},
+                }
+                db_utils.log_snapshot(sample_status)
+
+                latest = db_utils.fetch_latest_status()
+                self.assertIsNotNone(latest)
+                self.assertEqual(latest["total_value_usd"], 1500.0)
+                self.assertEqual(latest["balances"]["USDC"], 300.0)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_dashboard_broken_pipe_suppression(self):
+        from dashboard import DashboardHandler, QuietThreadingHTTPServer
+
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.wfile = MagicMock()
+        handler.wfile.write.side_effect = BrokenPipeError(32, "Broken pipe")
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+
+        # Non deve sollevare eccezioni
+        handler._send_json(200, {"status": "ok"})
+
+        # Verifica handle_error su server
+        server = QuietThreadingHTTPServer.__new__(QuietThreadingHTTPServer)
+        with patch("sys.exc_info", return_value=(BrokenPipeError, BrokenPipeError(32, "Broken pipe"), None)):
+            with patch("socketserver.BaseServer.handle_error") as mock_super_handle:
+                server.handle_error(MagicMock(), ("127.0.0.1", 12345))
+                mock_super_handle.assert_not_called()
+
+    def test_dashboard_api_status_wallet_object(self):
+        from dashboard import DashboardHandler
+        handler = DashboardHandler.__new__(DashboardHandler)
+        handler.client = MagicMock()
+        handler.client.address = "0x14D000000000000000000000000000000000FA28"
+        handler.manager = MagicMock()
+        handler.path = "/api/status"
+        sent_data = {}
+        def fake_send_json(status, data):
+            nonlocal sent_data
+            sent_data = data
+        handler._send_json = fake_send_json
+
+        sample_status = {
+            "mode": "live",
+            "balances": {"ETH": 0.05, "USDC": 120.0},
+            "prices": {"ETH": 2600.0, "USDC": 1.0},
+            "gas_eth": {"amount": 0.05, "value_usd": 130.0},
+        }
+        with patch("db_utils.fetch_latest_status", return_value=sample_status), \
+             patch("db_utils.is_bot_paused", return_value=False), \
+             patch("db_utils.get_pause_info", return_value={}):
+            handler.do_GET()
+
+        self.assertIn("wallet", sent_data)
+        self.assertEqual(sent_data["wallet"]["eth"], 0.05)
+        self.assertEqual(sent_data["wallet"]["eth_usd"], 130.0)
+        self.assertEqual(sent_data["wallet"]["extra"], [["USDC nel wallet", "$120.00"]])
+
+
+if __name__ == "__main__":
+    unittest.main()
+

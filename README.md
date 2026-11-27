@@ -80,6 +80,30 @@ is enforced in the executor's code and cannot be bypassed from the prompt.
    [coordinator](https://github.com/scobru/intelligent-trading-agent-coordinator)
    brings them together in a single dashboard and moves capital between them.
 
+## Single deploy
+
+Every agent also lives in this repo under `agents/<id>/` (imported with
+`git subtree`, history included). `run.py` starts only the strategies you list,
+in one container, with one `.env`:
+
+```bash
+cp .env.example .env   # set STRATEGIES=coordinator,dca,lp and the keys
+docker compose up -d --build
+```
+
+- `STRATEGIES`: any of `coordinator, perp, yield, neutral, lp, dca, degen`.
+- Per-strategy settings use the prefix `AGENT_<ID>_`: `AGENT_DCA_PRIVATE_KEY`
+  becomes `PRIVATE_KEY` for dca only. A global `PRIVATE_KEY` is ignored, so
+  each strategy keeps its own wallet. Sub-agents never see other agents' keys.
+- Each strategy still runs its own `start.sh` as a separate process: one crash
+  does not stop the others, and `run.py` restarts it after 30s.
+- Ports: coordinator 3000 (exposed), perp 3001, yield 3002, neutral 3003,
+  lp 3004, dca 3005, degen 3006 (internal, the coordinator reads them).
+- State lives in the `/data/<id>` volume.
+- Telegram commands: one bot token allows one listener, so a strategy listens
+  only if it has its own `AGENT_<ID>_TELEGRAM_BOT_TOKEN`. Notifications work
+  with the shared token.
+
 ## ⚠️ Disclaimer
 
 This software is experimental and provided "as is", without warranty of any

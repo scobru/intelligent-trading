@@ -1,0 +1,17 @@
+# Union of agents/*/requirements.txt
+web3>=7.0.0,<9
+eth-account>=0.11.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+openai>=1.0.0
+ccxt>=4.1.0
+pandas>=2.0.0
+numpy>=1.24.0
+ta>=0.11.0
+tradingview-screener
+prophet
+yfinance
+matplotlib
+plotly
+toonify
+pytest

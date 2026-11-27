@@ -1,0 +1,175 @@
+"""
+Configurazione del bot spot su Base (chain id 8453).
+
+Gli indirizzi qui sotto sono contratti noti di Base mainnet. Non ci fidiamo
+della costante scritta a mano: all'avvio `base_client.verify_contracts()`
+interroga la chain e confronta symbol/decimals, quindi un indirizzo sbagliato
+si manifesta come errore esplicito invece che come swap verso il nulla.
+"""
+
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def _f(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _i(name: str, default: int) -> int:
+    try:
+        return int(float(os.getenv(name, default)))
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _b(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "y", "on", "si")
+
+
+# ---------------------------------------------------------------- rete
+CHAIN_ID = 8453
+BASE_RPC_URL = os.getenv("BASE_RPC_URL", "https://mainnet.base.org")
+WALLET_ADDRESS = os.getenv("WALLET_ADDRESS", "")
+PRIVATE_KEY = os.getenv("PRIVATE_KEY", "")
+
+# ---------------------------------------------------------------- contratti Base
+WETH = "0x4200000000000000000000000000000000000006"
+USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+
+# Uniswap V3 su Base
+UNISWAP_V3_FACTORY = "0x33128a8fC17869897dcE68Ed026d694621f6FDfD"
+UNISWAP_V3_QUOTER_V2 = "0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a"
+UNISWAP_V3_SWAP_ROUTER_02 = "0x2626664c2603336E57B271c5C0b26F421741e481"
+
+# Fee tier esplorate quando si cerca una rotta
+FEE_TIERS = (100, 500, 3000, 10000)
+
+# Token di quotazione: ogni rotta passa da uno di questi
+QUOTE_TOKENS = {"USDC": USDC, "WETH": WETH}
+
+# Asset "core": sempre ammessi, saltano lo screening di mercato
+CORE_TOKENS = {
+    "WETH": {"address": WETH, "decimals": 18, "cex_symbol": "ETH"},
+    "USDC": {"address": USDC, "decimals": 6, "cex_symbol": None},
+}
+
+# La valuta in cui il bot tiene la liquidita' inutilizzata
+BASE_CURRENCY = "USDC"
+
+# ---------------------------------------------------------------- sicurezza operativa
+# Di default NON firma nulla: mettere DRY_RUN=false per operare davvero.
+DRY_RUN = _b("DRY_RUN", True)
+
+# Paper trading: portafoglio virtuale, prezzi e rotte reali. Gli ordini
+# vengono "eseguiti" contro un saldo finto, cosi' si vede la strategia
+# lavorare senza capitale sul wallet. Implica sempre DRY_RUN.
+PAPER_TRADING = _b("PAPER_TRADING", False)
+PAPER_START_USDC = _f("PAPER_START_USDC", 1000.0)
+PAPER_START_ETH = _f("PAPER_START_ETH", 0.05)
+# Costo del gas simulato per swap, in USD
+PAPER_GAS_USD = _f("PAPER_GAS_USD", 0.02)
+
+if PAPER_TRADING:
+    DRY_RUN = True
+
+# Riserva di ETH da non spendere mai, serve per il gas
+MIN_ETH_RESERVE = _f("MIN_ETH_RESERVE", 0.0015)
+
+MAX_SLIPPAGE_BPS = _i("MAX_SLIPPAGE_BPS", 300)          # 3%
+DEFAULT_SLIPPAGE_BPS = _i("DEFAULT_SLIPPAGE_BPS", 150)  # 1.5%
+MAX_GAS_PRICE_GWEI = _f("MAX_GAS_PRICE_GWEI", 0.5)
+TX_DEADLINE_SECONDS = _i("TX_DEADLINE_SECONDS", 300)
+TX_TIMEOUT_SECONDS = _i("TX_TIMEOUT_SECONDS", 180)
+
+# ---------------------------------------------------------------- auto-refuel USDC da ETH
+AUTO_SWAP_ETH_TO_USDC = _b("AUTO_SWAP_ETH_TO_USDC", True)
+ETH_GAS_RESERVE = _f("ETH_GAS_RESERVE", 0.003)          # Riserva di ETH nativo per gas fee
+MIN_ETH_SWAP_AMOUNT = _f("MIN_ETH_SWAP_AMOUNT", 0.002)   # Soglia minima di ETH spendibile
+USDC_AUTO_SWAP_THRESHOLD = _f("USDC_AUTO_SWAP_THRESHOLD", 5.0)  # Attiva swap se USDC < soglia
+
+# ---------------------------------------------------------------- limiti di rischio
+MAX_POSITION_PCT = _f("MAX_POSITION_PCT", 0.25)   # per singolo token, sul totale
+MAX_OPEN_TOKENS = _i("MAX_OPEN_TOKENS", 5)        # quante posizioni contemporanee
+MIN_TRADE_USD = _f("MIN_TRADE_USD", 5.0)
+MAX_TRADE_USD = _f("MAX_TRADE_USD", 250.0)
+DUST_USD = _f("DUST_USD", 1.0)                    # sotto questa soglia non e' una posizione
+
+DEFAULT_STOP_LOSS_PCT = _f("DEFAULT_STOP_LOSS_PCT", 20.0)
+DEFAULT_TAKE_PROFIT_PCT = _f("DEFAULT_TAKE_PROFIT_PCT", 40.0)
+
+# ---------------------------------------------------------------- screening token
+SCREEN_MAX_CANDIDATES = _i("SCREEN_MAX_CANDIDATES", 12)
+SCREEN_MIN_LIQUIDITY_USD = _f("SCREEN_MIN_LIQUIDITY_USD", 250_000)
+SCREEN_MIN_VOLUME_24H_USD = _f("SCREEN_MIN_VOLUME_24H_USD", 400_000)
+SCREEN_MIN_POOL_AGE_DAYS = _f("SCREEN_MIN_POOL_AGE_DAYS", 7)
+SCREEN_MAX_TAX_PERCENT = _f("SCREEN_MAX_TAX_PERCENT", 5.0)
+SCREEN_CACHE_SECONDS = _i("SCREEN_CACHE_SECONDS", 1800)
+
+# Token che non vogliamo mai toccare, qualunque cosa dicano le API
+TOKEN_BLOCKLIST = {
+    a.strip().lower()
+    for a in os.getenv("TOKEN_BLOCKLIST", "").split(",")
+    if a.strip()
+}
+
+# Token sempre valutati a ogni ciclo, anche se non emergono dalla scoperta.
+# Passano gli stessi filtri di tutti gli altri.
+TOKEN_WATCHLIST = {
+    a.strip().lower()
+    for a in os.getenv("TOKEN_WATCHLIST", "").split(",")
+    if a.strip()
+}
+
+# Indirizzi verificati a mano dall'operatore: saltano il requisito "presente
+# nella token list CoinGecko", ma NON i controlli di mercato e di contratto.
+TOKEN_TRUSTED = {
+    a.strip().lower()
+    for a in os.getenv("TOKEN_TRUSTED", "").split(",")
+    if a.strip()
+}
+
+# Se valorizzata, l'universo si limita a questi indirizzi (piu' i core)
+TOKEN_ALLOWLIST = {
+    a.strip().lower()
+    for a in os.getenv("TOKEN_ALLOWLIST", "").split(",")
+    if a.strip()
+}
+
+# ---------------------------------------------------------------- API esterne
+COINGECKO_BASE_TOKENLIST = "https://tokens.coingecko.com/base/all.json"
+DEXSCREENER_TOKENS_URL = "https://api.dexscreener.com/latest/dex/tokens/"
+GOPLUS_TOKEN_SECURITY_URL = f"https://api.gopluslabs.io/api/v1/token_security/{CHAIN_ID}"
+GECKOTERMINAL_BASE_URL = "https://api.geckoterminal.com/api/v2"
+HTTP_TIMEOUT = _i("HTTP_TIMEOUT", 20)
+# Quanto vale una serie di candele prima di riscaricarla. Con cicli da 15
+# minuti tenerle 10 minuti dimezza le chiamate senza invecchiare i dati.
+OHLCV_CACHE_SECONDS = _i("OHLCV_CACHE_SECONDS", 600)
+
+def persistent_path(filename: str) -> str:
+    """
+    Su CapRover/Docker /app/data e' la directory montata come volume
+    persistente: i file di stato vanno li', altrimenti a ogni redeploy si
+    perdono storico e prezzi di carico. In locale restano accanto al codice.
+    """
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(project_dir, "data")
+    if os.path.isdir(data_dir) and os.access(data_dir, os.W_OK):
+        return os.path.join(data_dir, filename)
+    return os.path.join(project_dir, filename)
+
+
+def default_db_path() -> str:
+    return persistent_path("trading_agent.db")
+
+
+SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH") or default_db_path()
+POSITIONS_PATH = os.getenv("POSITIONS_PATH") or persistent_path("positions.json")
