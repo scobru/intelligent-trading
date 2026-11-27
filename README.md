@@ -110,9 +110,10 @@ docker compose up -d --build
   `AGENT_<ID>_PUBLIC_URL` (and expose that port in `docker-compose.yml`).
 - At startup `run.py` warns, once per strategy, about a missing wallet or
   `OPENROUTER_API_KEY`.
-- The coordinator starts `COORDINATOR_START_DELAY` seconds (default 180) after
-  the strategies, and skips auto-rebalancing while any strategy is offline: an
-  agent that has not reported yet reads as $0 and would otherwise be funded.
+- The coordinator dashboard starts at once; its first cycle waits
+  `COORDINATOR_START_DELAY` seconds (default 180) for the strategies. It also
+  skips auto-rebalancing while any strategy is offline: an agent that has not
+  reported yet reads as $0 and would otherwise be funded.
 - Telegram commands: one bot token allows one listener, so a strategy listens
   only if it has its own `AGENT_<ID>_TELEGRAM_BOT_TOKEN`. Notifications work
   with the shared token.
