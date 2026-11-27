@@ -59,3 +59,8 @@ def test_coordinator_wallet_becomes_agent_wallet_address():
     assert run.build_env("degen", base, ["degen"])["WALLET_ADDRESS"] == "0xabc"
     assert run.build_env("yield", base, ["yield"])["WALLET_ADDRESS"] == "0x123"  # explicit wins
     assert "WALLET_ADDRESS" not in run.build_env("coordinator", base, ["coordinator"])
+
+
+def test_coordinator_first_cycle_delay_default_and_override():
+    assert run.build_env("coordinator", {}, ["coordinator"])["COORDINATOR_START_DELAY"] == "180"
+    assert run.build_env("coordinator", {"COORDINATOR_START_DELAY": "5"}, ["coordinator"])["COORDINATOR_START_DELAY"] == "5"

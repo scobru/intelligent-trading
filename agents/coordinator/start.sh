@@ -18,6 +18,12 @@ elif [ "${DRY_RUN:-true}" = "true" ]; then
 fi
 echo ""
 
+DELAY="${COORDINATOR_START_DELAY:-0}"
+if [ "${DELAY}" != "0" ]; then
+    echo "⏳ Primo ciclo tra ${DELAY}s: attendo che gli agenti siano pronti (dashboard gia' attiva)."
+    sleep "${DELAY}"
+fi
+
 while true; do
     echo "⏰ [$(date -u +%Y-%m-%dT%H:%M:%SZ)] Running coordinator cycle..."
     python -u main.py || echo "⚠️ Warning: ciclo coordinator terminato con errore, riprovo tra ${INTERVAL}s"
