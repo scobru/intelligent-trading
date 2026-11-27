@@ -1,5 +1,6 @@
 #!/bin/bash
 set -u
+DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "========================================================"
 echo "Starting Neutral Agent (Base delta-neutral) on Docker"
@@ -12,8 +13,8 @@ INTERVAL="${TRADING_INTERVAL:-1800}"
 #    funding si legge da li'. Senza SYNFUTURES_PRIVATE_KEY non firma nulla.
 echo "[1/3] Starting SynFutures microservice on port 3100..."
 (
-    cd /app/synfutures-service
-    export SYNFUTURES_PORT=3100
+    cd "$DIR/synfutures-service"
+    export SYNFUTURES_PORT="${SYNFUTURES_PORT:-3100}"
     # l'SDK legge l'RPC da BASE_RPC: la allineiamo a BASE_RPC_URL del bot
     export BASE_RPC="${BASE_RPC:-${BASE_RPC_URL:-https://mainnet.base.org}}"
     export SYNFUTURES_PRIVATE_KEY="${SYNFUTURES_PRIVATE_KEY:-${PRIVATE_KEY:-}}"
@@ -25,14 +26,14 @@ echo "[1/3] Starting SynFutures microservice on port 3100..."
 ) &
 
 for i in $(seq 1 30); do
-    curl -s http://localhost:3100/health > /dev/null 2>&1 && break
+    curl -s http://localhost:${SYNFUTURES_PORT:-3100}/health > /dev/null 2>&1 && break
     sleep 1
 done
 
 echo "[2/3] Starting Web Dashboard on port ${PORT:-3000}..."
 python dashboard.py &
 
-if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ "${TELEGRAM_LISTENER:-true}" = "true" ]; then
     echo "📱 Starting Telegram Bot listener..."
     python telegram_bot.py &
 fi

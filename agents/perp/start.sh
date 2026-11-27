@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -e
+DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "========================================================"
 echo " Starting Intelligent Trading Agent on CapRover / Docker"
@@ -12,22 +13,22 @@ if [ "${PAPER_TRADING:-false}" = "true" ]; then
 else
     # 1. Start SynFutures Node.js Microservice in background on port 3100
     echo "[1/4] Starting SynFutures Node.js microservice on port 3100..."
-    cd /app/synfutures-service
-    export SYNFUTURES_PORT=3100
-    export SYNFUTURES_SERVICE_URL="http://localhost:3100"
+    cd "$DIR/synfutures-service"
+    export SYNFUTURES_PORT="${SYNFUTURES_PORT:-3100}"
+    export SYNFUTURES_SERVICE_URL="http://localhost:${SYNFUTURES_PORT}"
     if [ -d "dist" ]; then
         node dist/index.js &
     else
         npx ts-node src/index.ts &
     fi
     SERVICE_PID=$!
-    cd /app
+    cd "$DIR"
 
     # 2. Wait for synfutures-service /health endpoint
-    echo "[2/4] Waiting for SynFutures microservice on http://localhost:3100/health..."
+    echo "[2/4] Waiting for SynFutures microservice on http://localhost:${SYNFUTURES_PORT:-3100}/health..."
     MAX_TRIES=30
     COUNT=0
-    until curl -s http://localhost:3100/health > /dev/null 2>&1 || [ $COUNT -eq $MAX_TRIES ]; do
+    until curl -s http://localhost:${SYNFUTURES_PORT:-3100}/health > /dev/null 2>&1 || [ $COUNT -eq $MAX_TRIES ]; do
         sleep 1
         COUNT=$((COUNT + 1))
     done
@@ -47,7 +48,7 @@ DASHBOARD_PID=$!
 
 # 3b. Start Telegram Bot Listener if configured
 TELEGRAM_PID=""
-if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ "${TELEGRAM_LISTENER:-true}" = "true" ]; then
     echo "📱 Starting Telegram Bot listener..."
     python telegram_bot.py &
     TELEGRAM_PID=$!

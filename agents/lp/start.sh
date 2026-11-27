@@ -11,7 +11,7 @@ PORT="${DASHBOARD_PORT:-${PORT:-3000}}"
 echo "[1/2] Starting Web Dashboard on port ${PORT}..."
 python dashboard.py &
 
-if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ "${TELEGRAM_LISTENER:-true}" = "true" ]; then
     echo "📱 Starting Telegram Bot listener..."
     python telegram_bot.py &
 fi

@@ -10,7 +10,7 @@ INTERVAL="${TRADING_INTERVAL:-900}"
 echo "[1/2] Starting Web Dashboard on port ${PORT:-3000}..."
 python dashboard.py &
 
-if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ "${TELEGRAM_LISTENER:-true}" = "true" ]; then
     echo "📱 Starting Telegram Bot listener..."
     python telegram_bot.py &
 fi
