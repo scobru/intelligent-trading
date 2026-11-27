@@ -8,7 +8,9 @@ import hmac
 import json
 import logging
 import os
+import socket
 import sys
+from functools import lru_cache
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -434,6 +436,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
 
       // Render 6 Agents Cards
+      window.publicHost = s.public_host || location.hostname;
       renderAgents(s.agents || {}, s.allocation_plan?.allocations || {}, ai, s.regime_data?.eth_price || 2690, s.performance || {});
 
       renderAllocTable(s.allocation_plan?.allocations || {}, ai);
@@ -533,7 +536,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span>Gas ETH: <strong>${gasEth.toFixed(4)}</strong>${gasUsdStr}</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; gap: 6px;">
-              ${(a.url || a.port) ? `<a href="${a.url || `http://${location.hostname}:${a.port}`}" target="_blank" rel="noopener" style="border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 3px 8px; font-size: 11px; text-decoration: none;">Apri Dashboard ↗</a>` : '<span></span>'}
+              ${(a.url || a.port) ? `<a href="${a.url || `http://${window.publicHost || location.hostname}:${a.port}`}" target="_blank" rel="noopener" style="border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 3px 8px; font-size: 11px; text-decoration: none;">Apri Dashboard ↗</a>` : '<span></span>'}
               <div style="display: flex; gap: 6px;">
                 <button onclick="releaseAgentFunds('${aid}')" title="Svincola liquidità USDC (vende token o ritira da Gate)" style="background: rgba(14, 165, 233, 0.15); border: 1px solid rgba(14, 165, 233, 0.4); border-radius: 6px; color: var(--primary); padding: 3px 8px; font-size: 11px; cursor: pointer; font-weight: 500;">💸 Libera USDC</button>
                 ${pauseBtn}
@@ -776,6 +779,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
+
+@lru_cache(maxsize=8)
+def _public_host(request_host: str) -> str:
+    """Host for the agent dashboard links (http on their own ports).
+    The page domain can't be reused: e.g. .dev is HSTS-preloaded, browsers force https on every port.
+    PUBLIC_HOST wins; otherwise the domain is resolved to the VPS IP (wrong behind a CDN proxy: set PUBLIC_HOST)."""
+    explicit = os.getenv("PUBLIC_HOST", "").strip()
+    if explicit:
+        return explicit
+    try:
+        return socket.gethostbyname(request_host) if request_host else ""
+    except OSError:
+        return request_host
+
 class SafeThreadingHTTPServer(ThreadingHTTPServer):
     def handle_error(self, request, client_address):
         exc_type, exc_value, _ = sys.exc_info()
@@ -901,7 +918,9 @@ class MasterDashboardHandler(BaseHTTPRequestHandler):
                                 agents[aid]["snapshots_count"] = pnl_data.get("snapshots_count", 0)
                 except Exception:
                     pass
-            self._json(200, _latest_status_cache or {})
+            payload = dict(_latest_status_cache or {})
+            payload["public_host"] = _public_host((self.headers.get("Host") or "").rsplit(":", 1)[0])
+            self._json(200, payload)
             return
 
         if path == "/api/snapshots":
