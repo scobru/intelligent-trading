@@ -54,7 +54,8 @@ def build_env(agent, base, active):
         env["SQLITE_DB_PATH"] = str(AGENTS_DIR / "coordinator" / "data" / "coordinator.db")
         for other in active:
             if other != "coordinator":
-                env.setdefault(f"AGENT_{other.upper()}_URL", f"http://localhost:{PORTS[other]}")
+                # Forced: AGENT_<ID>_URL left over from the one-app-per-agent setup points to old apps.
+                env[f"AGENT_{other.upper()}_URL"] = f"http://localhost:{PORTS[other]}"
     # One Telegram token allows one getUpdates consumer: listen only with a dedicated token.
     env["TELEGRAM_LISTENER"] = "true" if base.get(prefix + "TELEGRAM_BOT_TOKEN") else "false"
     for k, v in base.items():
@@ -113,6 +114,10 @@ def main():
     signal.signal(signal.SIGINT, stop)
 
     for agent in active:
+        old_url = base.get(f"AGENT_{agent.upper()}_URL")
+        if agent != "coordinator" and old_url:
+            print(f"[run] ignoring AGENT_{agent.upper()}_URL={old_url}: the coordinator uses the local {agent}. "
+                  f"If that URL is an old separate app, stop it: it trades on its own.", flush=True)
         env = build_env(agent, base, active)
         for m in missing_settings(agent, env):
             print(f"[run] WARNING {agent}: {m} not set, its cycles will fail", flush=True)

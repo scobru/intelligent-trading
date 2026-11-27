@@ -64,3 +64,9 @@ def test_coordinator_wallet_becomes_agent_wallet_address():
 def test_coordinator_first_cycle_delay_default_and_override():
     assert run.build_env("coordinator", {}, ["coordinator"])["COORDINATOR_START_DELAY"] == "180"
     assert run.build_env("coordinator", {"COORDINATOR_START_DELAY": "5"}, ["coordinator"])["COORDINATOR_START_DELAY"] == "5"
+
+
+def test_coordinator_always_talks_to_local_agents():
+    base = {"AGENT_PERP_URL": "http://srv-captain--old-perp:3000"}
+    env = run.build_env("coordinator", base, ["coordinator", "perp"])
+    assert env["AGENT_PERP_URL"] == "http://localhost:3001"
