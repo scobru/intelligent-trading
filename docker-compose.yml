@@ -5,7 +5,7 @@ services:
     env_file: .env
     ports:
       - "3000:3000"   # coordinator
-      # strategy dashboards: expose the ones you use, then set AGENT_<ID>_PUBLIC_URL
+      # strategy dashboards ("Apri Dashboard" opens http://<this host>:<port>)
       # - "3001:3001" # perp
       # - "3002:3002" # yield
       # - "3003:3003" # neutral
