@@ -323,7 +323,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
   <!-- STATO DEI 6 AGENTI SUBORDINATI -->
   <h2 style="font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-    🤖 Nodi Operativi Subordinati (6 Agenti)
+    🤖 Nodi Operativi Subordinati (<span id="agents-count">…</span> Agenti)
   </h2>
   <div class="agents-grid" id="agents-container">
     <!-- Popolato dinamicamente da JS -->
@@ -545,7 +545,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
               <span>Gas ETH: <strong>${gasEth.toFixed(4)}</strong>${gasUsdStr}</span>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; gap: 6px;">
-              <a href="${a.url || '#'}" target="_blank" style="font-size: 12px; text-decoration: none;">Apri Dashboard ↗</a>
+              ${a.url ? `<a href="${a.url}" target="_blank" rel="noopener" style="font-size: 12px; text-decoration: none;">Apri Dashboard ↗</a>` : '<span></span>'}
               <div style="display: flex; gap: 6px;">
                 <button onclick="releaseAgentFunds('${aid}')" title="Svincola liquidità USDC (vende token o ritira da Gate)" style="background: rgba(14, 165, 233, 0.15); border: 1px solid rgba(14, 165, 233, 0.4); border-radius: 6px; color: var(--primary); padding: 3px 8px; font-size: 11px; cursor: pointer; font-weight: 500;">💸 Libera USDC</button>
                 ${pauseBtn}
@@ -556,6 +556,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         `;
       }).join('');
       container.innerHTML = html;
+      document.getElementById('agents-count').textContent = Object.keys(agents).length;
     }
 
     function renderAllocTable(allocs, ai) {

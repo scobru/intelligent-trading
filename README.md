@@ -100,6 +100,11 @@ docker compose up -d --build
 - Ports: coordinator 3000 (exposed), perp 3001, yield 3002, neutral 3003,
   lp 3004, dca 3005, degen 3006 (internal, the coordinator reads them).
 - State lives in the `/data/<id>` volume.
+- The coordinator shows and allocates capital only across the strategies in
+  `STRATEGIES`. Its "Apri Dashboard" link appears when you set
+  `AGENT_<ID>_PUBLIC_URL` (and expose that port in `docker-compose.yml`).
+- At startup `run.py` warns, once per strategy, about a missing wallet or
+  `OPENROUTER_API_KEY`.
 - Telegram commands: one bot token allows one listener, so a strategy listens
   only if it has its own `AGENT_<ID>_TELEGRAM_BOT_TOKEN`. Notifications work
   with the shared token.

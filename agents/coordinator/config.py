@@ -251,3 +251,19 @@ elif _raw_db and not os.path.isabs(_raw_db) and Path("/app").exists():
 else:
     SQLITE_DB_PATH = _raw_db
 PAPER_ACCOUNT_FILE = str(BASE_DIR / "paper_treasury.json")
+
+# --- Single deploy: only the strategies listed in STRATEGIES exist for the coordinator ---
+_active = {s.strip().lower() for s in os.getenv("STRATEGIES", "").split(",") if s.strip()} & set(AGENTS)
+if _active:
+    AGENTS = {k: v for k, v in AGENTS.items() if k in _active}
+    for _regime, _w in REGIME_TARGET_WEIGHTS.items():
+        _kept = {k: v for k, v in _w.items() if k in _active}
+        _tot = sum(_kept.values())
+        # regime that gives 0% to every active strategy: split evenly rather than allocate nothing
+        REGIME_TARGET_WEIGHTS[_regime] = (
+            {k: round(v / _tot, 4) for k, v in _kept.items()} if _tot > 0
+            else {k: round(1 / len(_active), 4) for k in _active}
+        )
+for _id, _cfg in AGENTS.items():
+    # Browser-facing link for "Apri Dashboard"; internal url is not reachable from outside.
+    _cfg["public_url"] = os.getenv(f"AGENT_{_id.upper()}_PUBLIC_URL", "").strip()
