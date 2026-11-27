@@ -841,8 +841,9 @@ class MasterDashboardHandler(BaseHTTPRequestHandler):
         if path == "/api/status":
             global _latest_status_cache
             # Se la cache e' vuota, eseguiamo o leggiamo l'ultimo snapshot
+            # The coordinator loop runs in another process and writes snapshots: reload when a newer one exists.
             snaps = db_utils.get_recent_snapshots(limit=1)
-            if snaps and not _latest_status_cache:
+            if snaps and snaps[0]["id"] != (_latest_status_cache or {}).get("_snapshot_id"):
                 last_snap = snaps[0]
                 try:
                     conn = db_utils.get_connection()
@@ -852,21 +853,22 @@ class MasterDashboardHandler(BaseHTTPRequestHandler):
                     conn.close()
                     if row and row["details_json"]:
                         _latest_status_cache = json.loads(row["details_json"])
+                        _latest_status_cache["_snapshot_id"] = last_snap["id"]
                 except Exception:
                     pass
 
-            if not _latest_status_cache and self.coordinator:
-                try:
-                    _latest_status_cache = self.coordinator.run_cycle()
-                except Exception as exc:
-                    logger.error("Errore run_cycle durante /api/status: %s", exc)
-                    _latest_status_cache = {
-                        "error": str(exc),
-                        "total_net_worth_usd": 0.0,
-                        "regime": "BALANCED",
-                        "agents": {},
-                        "treasury": {}
-                    }
+            if not _latest_status_cache:
+                # First cycle not done yet. A page load must not run one: it would rebalance
+                # in parallel with the coordinator loop.
+                self._json(200, {
+                    "error": "Primo ciclo del coordinator in corso",
+                    "total_net_worth_usd": 0.0,
+                    "regime": "BALANCED",
+                    "agents": {},
+                    "treasury": {},
+                    "mode": "paper" if config.PAPER_TRADING else ("dry_run" if config.DRY_RUN else "live"),
+                })
+                return
 
             if _latest_status_cache:
                 _latest_status_cache["mode"] = "paper" if config.PAPER_TRADING else ("dry_run" if config.DRY_RUN else "live")

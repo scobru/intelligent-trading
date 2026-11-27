@@ -64,7 +64,9 @@ class Coordinator:
         logger.info("1/8 Interrogazione dei %d agenti...", len(config.AGENTS))
         agents_status = self.agent_client.get_all_statuses()
         online_count = sum(1 for a in agents_status.values() if a.get("online"))
-        logger.info("   -> %d/%d agenti online e operativi.", online_count, len(config.AGENTS))
+        offline = [aid for aid, a in agents_status.items() if not a.get("online")]
+        logger.info("   -> %d/%d agenti online e operativi.%s", online_count, len(config.AGENTS),
+                    f" Offline: {', '.join(offline)}" if offline else "")
 
         # 2. Analisi Macro e Regime di Mercato
         logger.info("2/8 Rilevamento Regime di Mercato e Prezzi Asset...")
