@@ -60,7 +60,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <link rel="icon" href="/static/favicon.ico">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="manifest" href="/static/site.webmanifest">
-  <link rel="stylesheet" href="/static/dashboard.css?v=2">
+  <link rel="stylesheet" href="/static/dashboard.css?v=6">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -70,64 +70,59 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .grid-kpi {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
+      gap: 8px;
+      margin-bottom: 10px;
     }
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 18px;
+      padding: 10px 12px;
     }
     .card h3 {
       font-size: 12px;
       text-transform: uppercase;
       letter-spacing: .5px;
       color: var(--muted);
-      margin-bottom: 8px;
+      margin-bottom: 4px;
     }
     .card .val {
-      font-size: 26px;
+      font-size: 19px;
       font-weight: 700;
     }
     .card .sub {
-      font-size: 12px;
+      font-size: 11px;
       color: var(--muted);
-      margin-top: 4px;
+      margin-top: 2px;
     }
     .agents-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
     }
     .agent-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 16px;
+      padding: 10px 12px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      transition: transform .15s ease, border-color .15s ease;
-    }
-    .agent-card:hover {
-      border-color: var(--accent);
-      transform: translateY(-2px);
+      gap: 6px;
     }
     .agent-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       border-bottom: 1px solid var(--border);
-      padding-bottom: 10px;
+      padding-bottom: 6px;
     }
     .agent-title {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       font-weight: 600;
-      font-size: 15px;
+      font-size: 14px;
     }
     .prog-bar {
       height: 6px;
@@ -147,12 +142,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       background: rgba(239, 68, 68, 0.15);
       color: var(--danger);
       border: 1px solid rgba(239, 68, 68, 0.4);
-      padding: 7px 14px;
-      border-radius: 8px;
+      padding: 5px 10px;
+      border-radius: 4px;
       cursor: pointer;
       font-weight: 600;
       font-size: 12px;
-      transition: all .2s;
     }
     .panic-btn:hover {
       background: var(--danger);
@@ -162,19 +156,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       background: var(--primary);
       color: #fff;
       border: none;
-      padding: 7px 14px;
-      border-radius: 8px;
+      padding: 5px 10px;
+      border-radius: 4px;
       cursor: pointer;
       font-weight: 600;
       font-size: 12px;
     }
     .run-btn:hover { opacity: 0.9; }
     .ai-card {
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(59, 130, 246, 0.05) 100%);
-      border: 1px solid rgba(139, 92, 246, 0.3);
+      border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 18px;
-      margin-bottom: 24px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
     }
     .ai-top-badge {
       background: rgba(34, 197, 94, 0.15);
@@ -199,19 +192,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      padding: 4px 10px;
-      border-radius: 8px;
-      font-size: 13px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
       font-weight: 700;
       letter-spacing: 0.3px;
     }
     .pnl-badge.profit {
-      background: linear-gradient(135deg, rgba(34, 197, 94, 0.18) 0%, rgba(16, 185, 129, 0.10) 100%);
+      background: rgba(34, 197, 94, 0.12);
       color: #22c55e;
       border: 1px solid rgba(34, 197, 94, 0.35);
     }
     .pnl-badge.loss {
-      background: linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, rgba(220, 38, 38, 0.10) 100%);
+      background: rgba(239, 68, 68, 0.12);
       color: #ef4444;
       border: 1px solid rgba(239, 68, 68, 0.35);
     }
@@ -225,18 +218,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       justify-content: space-between;
       align-items: center;
       background: rgba(0,0,0,0.15);
-      border-radius: 8px;
-      padding: 8px 12px;
+      border-radius: 4px;
+      padding: 4px 8px;
     }
     .pnl-detail {
       font-size: 11px;
       color: var(--muted);
     }
-    @keyframes pnlPulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.85; }
-    }
-    .pnl-badge.profit { animation: pnlPulse 3s ease-in-out infinite; }
   </style>
 </head>
 <body>

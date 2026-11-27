@@ -59,7 +59,7 @@ HTML = r"""<!DOCTYPE html>
 <meta name="theme-color" content="#06b6d4">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/dashboard.css?v=3">
+<link rel="stylesheet" href="/static/dashboard.css?v=6">
 <style>:root { --primary: #06b6d4; --accent: #0ea5e9; }</style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="/static/dashboard.js?v=3"></script>

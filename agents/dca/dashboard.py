@@ -120,7 +120,7 @@ HTML = r"""<!DOCTYPE html>
 <title>DCA &amp; Rebalancer Agent</title>
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/static/dashboard.css?v=5">
+<link rel="stylesheet" href="/static/dashboard.css?v=6">
 <style>
 :root { --primary: #3b82f6; --accent: #60a5fa; }
 .fng-card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
