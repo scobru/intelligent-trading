@@ -46,3 +46,9 @@ def test_synfutures_ports_do_not_collide():
     neutral = run.build_env("neutral", {}, ["perp", "neutral"])
     assert perp["SYNFUTURES_PORT"] != neutral["SYNFUTURES_PORT"]
     assert neutral["SYNFUTURES_SERVICE_URL"].endswith(neutral["SYNFUTURES_PORT"])
+
+
+def test_missing_settings():
+    assert run.missing_settings("coordinator", {}) == []
+    assert len(run.missing_settings("yield", {})) == 2
+    assert run.missing_settings("dca", {"WALLET_ADDRESS": "0x1", "OPENROUTER_API_KEY": "k"}) == []

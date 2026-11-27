@@ -48,6 +48,7 @@ class AgentClient:
             "equity_usd": 0.0,
             "gas_eth": 0.0,
             "wallet": cfg.get("wallet", ""),
+            "url": cfg.get("public_url", ""),
             "positions_count": 0,
             "positions": [],
             "status": "offline",

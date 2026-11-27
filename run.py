@@ -61,6 +61,19 @@ def build_env(agent, base, active):
     return env
 
 
+def missing_settings(agent, env):
+    """Warn-only preflight: agents re-check at every cycle, this just says it once, up front."""
+    if agent == "coordinator":
+        return []
+    missing = []
+    if not (env.get("PRIVATE_KEY") or env.get("WALLET_ADDRESS") or env.get("SYNFUTURES_WALLET")):
+        p = f"AGENT_{agent.upper()}_"
+        missing.append(f"{p}WALLET_ADDRESS or {p}PRIVATE_KEY")
+    if not env.get("OPENROUTER_API_KEY"):
+        missing.append("OPENROUTER_API_KEY")
+    return missing
+
+
 def _pipe(agent, stream):
     for line in iter(stream.readline, ""):
         sys.stdout.write(f"[{agent}] {line}")
@@ -95,10 +108,13 @@ def main():
     signal.signal(signal.SIGINT, stop)
 
     for agent in active:
-        procs[agent] = start(agent, build_env(agent, base, active))
+        env = build_env(agent, base, active)
+        for m in missing_settings(agent, env):
+            print(f"[run] WARNING {agent}: {m} not set, its cycles will fail", flush=True)
+        procs[agent] = start(agent, env)
         print(f"[run] started {agent} on port {PORTS[agent]}", flush=True)
 
-    # start.sh loops forever; if one dies, restart only that strategy.
+    # start.sh loops forever; if the script itself dies, restart only that strategy.
     while not stopping:
         time.sleep(5)
         for agent, p in list(procs.items()):
