@@ -193,7 +193,7 @@ class AiStrategist:
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.2,
-            "max_tokens": 1000
+            "max_tokens": 4000  # 1000 truncated the JSON with reasoning models
         }
 
         try:
