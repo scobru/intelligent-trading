@@ -60,7 +60,7 @@ class RiskEngine:
                             crypto_val += float(v)
                 elif isinstance(p, (int, float)):
                     crypto_val = float(p)
-                net_long_usd += crypto_val
+                net_long_usd += crypto_val * float(st.get("paper_scale", 1.0))
 
             elif agent_id == "degen":
                 # Token spot meme/altcoin sono 100% Long
@@ -71,8 +71,12 @@ class RiskEngine:
                 for p in pos_list:
                     if not isinstance(p, dict):
                         continue
-                    direction = str(p.get("direction", "")).upper()
-                    val = float(p.get("notional_usd", p.get("size_usd", 0.0)) or 0.0)
+                    # perp's dashboard reports side/size/mark_price, not direction/notional_usd
+                    direction = str(p.get("direction") or p.get("side") or "").upper()
+                    notional = p.get("notional_usd", p.get("size_usd"))
+                    if notional is None:
+                        notional = abs(float(p.get("size") or 0.0)) * float(p.get("mark_price") or 0.0)
+                    val = float(notional or 0.0) * float(st.get("paper_scale", 1.0))
                     if direction == "LONG":
                         net_long_usd += val
                     elif direction == "SHORT":

@@ -12,8 +12,9 @@ import threading
 import time
 from typing import Any, Dict, Optional
 
+import requests
+
 import config
-import http_client
 from lp_manager import LpManager
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ class TelegramNotifier:
             "disable_web_page_preview": True,
         }
         try:
-            resp = http_client.post(url, json=payload, timeout=10)
+            resp = requests.post(url, json=payload, timeout=10)
             return resp.status_code == 200
         except Exception as exc:
             logger.warning("Errore invio messaggio Telegram: %s", exc)
@@ -85,7 +86,7 @@ class TelegramNotifier:
         while not self._stop_event.is_set():
             try:
                 url = f"https://api.telegram.org/bot{self.token}/getUpdates?offset={self._last_update_id + 1}&timeout=10"
-                resp = http_client.get(url, timeout=15)
+                resp = requests.get(url, timeout=15)
                 if resp.status_code == 200:
                     data = resp.json()
                     for update in data.get("result", []):

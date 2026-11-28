@@ -77,7 +77,8 @@ def get_json(url: str, params: Dict[str, Any] = None, timeout: int = 20,
             if resp.status_code == 429:
                 retry_after = resp.headers.get("Retry-After")
                 try:
-                    wait = float(retry_after) if retry_after else backoff
+                    # Retry-After: 0 made every retry immediate and hit the limit again
+                    wait = max(float(retry_after), backoff) if retry_after else backoff
                 except ValueError:
                     wait = backoff
                 wait = min(wait, 30.0)

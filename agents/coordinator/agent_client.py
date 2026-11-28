@@ -244,6 +244,7 @@ class AgentClient:
         if start <= 0:
             return
         scale = float(allocs.get(res["id"], 0.0)) / start
+        res["paper_scale"] = scale  # risk engine scales position exposure the same way
         res["equity_usd"] = round(res["equity_usd"] * scale, 2)
         res["balance_usd"] = round(res["balance_usd"] * scale, 2)
 
